@@ -43,7 +43,7 @@ Too many magic literals? I agree. Let's try that again with a Schema
 ```py
 # Schemas help you remove all those magic literals e.g. 'email' string typed twice
 # from your code
-from supersql import String, Date, Integer
+from supersql import Schema, String, Date, Integer
 
 class Employee(Schema):
     __pk__ = ('email', 'identifier')
