@@ -3,10 +3,15 @@ Supersql Library
 
 Supersql is a `very thin wrapper` on top of SQL that enables you write SQL code in python easily.
 
+&nbsp;
 
 ## Why?
-The new python f strings and string formatting are nice but not customizable enough. Supersql makes
-it super simple to connect to and start querying a database in python.
+Let's be honest, writing sql templates using string formatting is really painful.
+SQLAlchemy is great, but sometimes an ORM is not what you need, and whilst the new
+`f strings` in python solve a lot of problems, complex SQL templating is not of
+them.
+
+Supersql makes it super simple to connect to and start querying a database in python.
 
 Let the code do the explanation:
 ```py
