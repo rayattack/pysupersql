@@ -1,7 +1,7 @@
 Supersql Library
 ================
 
-Supersql is `very thin wrapper` on top of SQL that enables you write your SQL code in python easily.
+Supersql is a `very thin wrapper` on top of SQL that enables you write SQL code in python easily.
 
 
 ## Why?
