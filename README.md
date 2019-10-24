@@ -13,19 +13,29 @@ Let the code do the explanation:
 
 from supersql import Connection, Query
 
+
 connection = Connection('postgres:localhost:5432', user='postgres', password='postgres')
 
 query = Query()
 
 
 results = query.SELECT(
-    'first_name', 'last_name', 'email').FROM('employees').WHERE('email', equals='someone@example.com').run()
+        'first_name', 'last_name', 'email'
+    ).FROM(
+        'employees'
+    ).WHERE('email', equals='someone@example.com').run()
+
 
 for result in results:
     print(result)
 
+```
 
+&nbsp;
 
+Too many magic literals? I agree. Let's try that again with a Schema
+
+```py
 # Schemas help you remove all those magic literals e.g. 'email' string typed twice
 # from your code
 from supersql import String, Date, Integer
@@ -35,8 +45,10 @@ class Employee(Schema):
 
     identifier = UUID(pg='uuid_version1', mysql=None)  # mysql included for examples sake
     email = String(required=True, unique=None, length=25)
+    age = Integer()
     first_name = String(required=True)
     last_name = String(25)
+    created_on = Date()
 
 
 # Now lets try again
