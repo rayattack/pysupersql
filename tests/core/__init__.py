@@ -1,0 +1,1 @@
+from supersql import Table

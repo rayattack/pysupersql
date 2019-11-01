@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "supersql"
+version = "2019.0.4"
+description = "Thin wrapper on top of SQL that enables you write SQL code in python easily"
+authors = ["Raymond Ortserga <codesage@live.com>"]
+license = "MIT"
+
+classifiers = [
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+keywords = ["SQL", "Database", "Python"]
+repository = "https://github.com/rayattack/supersql"
+
+readme = 'README.md'
+
+[tool.poetry.dependencies]
+python = "^3.6"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
+
+[tool.poetry.scripts]
+supersql = 'supersql:main'

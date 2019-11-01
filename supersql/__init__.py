@@ -1,2 +1,4 @@
-from supersql.containers import Schema
+
+
+from supersql.core import Query, Table
 from supersql.datatypes import *
