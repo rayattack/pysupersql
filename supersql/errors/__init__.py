@@ -18,11 +18,15 @@ class DuplicateError(Exception):
     pass
 
 
-class InvalidDocumentError(Exception):
+class InvalidFieldError(Exception):
     pass
 
 
-class InvalidFieldError(Exception):
+class MissingArgumentError(Exception):
+    pass
+
+
+class MissingCommandError(_Exception):
     pass
 
 

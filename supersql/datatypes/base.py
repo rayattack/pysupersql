@@ -110,6 +110,9 @@ class Base(object):
         if isinstance(value, self.py_type):  # pylint: disable=no-member
             return value
         return self.py_type(value)  # pylint: disable=no-member
+    
+    def print(self) -> str:
+        return "".join(self._print)
 
     def validate(self, value, instance=None):
         pass

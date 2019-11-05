@@ -1,4 +1,7 @@
 from supersql.core.table import Table
+from supersql.errors import MissingArgumentError, MissingCommandError
+
+from supersql.utils.helpers import get_tablename
 
 
 SUPPORTED_VENDORS = (
@@ -13,7 +16,7 @@ SUPPORTED_VENDORS = (
 )
 
 _SELECT = "SELECT"
-_FROM = "FROM"
+_FROM = " FROM "
 _WHERE = "WHERE"
 
 
@@ -65,7 +68,31 @@ class Query(object):
 
         self._pristine = True
         self._disparity = 0  # how many tables is this query for?
-        self._stack = []
+        self._from = []
+        self._callstack = []
+
+        self._tablenames = set()
+        self._orphans = set()
+        self._alias = None
+    
+    @classmethod
+    def clone(cls, q):
+        """
+        # ! Why copy of Query object is returned
+        # A copy of query is returned so internal query variables do not
+        # leak out to other query objects.
+        #
+        # i.e. it is possible to declare a global query object with connection
+        # configuration and reuse without fear of internal state corruption
+        """
+        this = cls(
+            vendor=q._vendor,
+            user=q._user,
+            password=q._password,
+            host=q._host,
+            silent=q._silent
+        )
+        return this
     
     def execute(self):
         """
@@ -93,10 +120,51 @@ class Query(object):
         return "".join(self._print)
     
     def was_called(self, command):
-        return command in self._stack
+        return command in self._callstack
+    
+    def AS(self, alias):
+        self._alias = alias
+        return self
 
     def FROM(self, *args, **kwargs):
-        self._stack.append(_FROM)
+        """
+        SQL FROM command proxy python method responsible for
+        adding the `from` target of the query object.
+        """
+        # 1. If a query object i.e. q then it should be a copy and not the same
+        # 2. str
+        # 3. It can be a table object i
+        self._callstack.append(_FROM)
+
+        num_of_args = len(args)
+        num_of_tables = len(self._tablenames)
+        # msg = f"Found different tables in SELECT statement but only 1 command received in FROM"
+        msg = f"tables:{num_of_tables}, args:{num_of_args}"
+
+        if num_of_args != num_of_tables:
+            raise MissingArgumentError(msg)
+        
+        for source in args:
+            has_alias = None
+            if isinstance(source, str):
+                _a = None
+                _q = str
+            elif isinstance(source, Query):
+                _a = source._alias
+                _q = f"({source.print()})"
+            elif isinstance(source, Table):
+                _a = source._alias
+                _q = source.__tn__()
+
+            _from = f"{_q} AS {_a}" if _a else f"{_q}"
+            self._from.append(_from)
+
+        _sql = ", ".join(
+            [f"{table}" for table in self._from]
+        ) if len(self._from) > 1 else "".join(table for table in self._from)
+        self._print.extend([_FROM, _sql])
+
+        return self
 
     def SELECT(self, *args):
         """SQL SELECT Proxy
@@ -117,7 +185,6 @@ class Query(object):
 
             # other possible ways to query with
             # a table object
-
             # from is omitted as it is obvious from `select`
             query.SELECT(cust).WHERE(cust.age > 10)
 
@@ -125,7 +192,9 @@ class Query(object):
             query.SELECT().FROM(cust).WHERE(cust.age > 10)
         ```
         """
-        self._stack.append(_SELECT)
+        this = Query.clone(self)
+
+        this._callstack.append(_SELECT)
 
         num_of_args = len(args)
         if num_of_args == 0:
@@ -133,22 +202,29 @@ class Query(object):
         elif num_of_args == 1:
             arg = args[0]
             if isinstance(arg, str):
+                this._tablenames.add(
+                    get_tablename(arg)
+                ) if get_tablename(arg) != arg else this._orphans.add(arg)
                 separator = arg
+            elif isinstance(arg, Table):
+                separator = "*"
+                this._tablenames.add(arg.__tn__())
             else:
-                separator = "*" if isinstance(arg, Table) else arg._name
+                separator = arg._name
+                this._tablenames.add(arg._meta.__tn__())
         else:
             cols = []
-            self.uniformal = set()
             for member in args:
                 if isinstance(member, str):
+                    tablename = get_tablename(member)
+                    this._tablenames.add(get_tablename(member)) if tablename != member else None
                     cols.append(member)
                 elif isinstance(member, Table):
-                    if member.__tablename__ not in self.uniformal:
-                        self._disparity += 1
-                    self.uniformal.add(member.__tablename__)
+                    this._tablenames.add(member.__tn__())
                     cols.extend(member.columns())
                 else:
-                    cols.append(f"{member._meta().__tablename__.lower()}.{member._name}")
+                    this._tablenames.add(member._meta.__tn__())
+                    cols.append(f"{member._meta.__tn__()}.{member._name}")
 
             separator = ", ".join(
                 [col for col in cols]
@@ -156,14 +232,14 @@ class Query(object):
 
         _select_statement = f"SELECT {separator}"
 
-        if self._pristine:
-            self._print.append(_select_statement)
-            self._pristine = False
+        if this._pristine:
+            this._print.append(_select_statement)
+            this._pristine = False
 
-        return self
+        return this
 
     def WHERE(self, *args, **kwargs):
-        self._stack.append(_WHERE)
-        if self.was_called(_FROM):
-            pass
-
+        if _FROM not in self._callstack:
+            self = self.FROM()
+        self._callstack.append(_WHERE)
+        

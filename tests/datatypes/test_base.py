@@ -16,10 +16,10 @@ class T(TestCase):
         sql = f"first_name = {num}"
         # self.assertEqual(sql, h.first_name == num)
         base = Base()
-        base._name = 4
-        self.assertEqual(sql, base)
-        print(h.first_name == num)
-    
+        o = h.first_name == 24
+        self.assertIsInstance(o, Base)
+        self.assertEqual(sql, o.print())
+
     def test_index(self):
         h = Holder()
         self.assertTrue(h.first_name._abs < h.last_name._abs)

@@ -44,12 +44,19 @@ class Table(object):
         from supersql.datatypes.base import Base
         return {k: v for k, v in cls.__dict__.items() if isinstance(v, Base)}
 
+    @classmethod
+    def __tn__(cls):
+        if cls.__tablename__:
+            return cls.__tablename__.lower()
+        return cls.__name__.lower()
+
     def __init__(self, *args, **kwargs):
         self._data = Localcache()
         self.__tablename__ = self.__tablename__ or type(self).__name__
         self.__tablename__ = self.__tablename__.lower()
 
         self.fields_cache = self.__autospector__()
+        self._alias = self.__tablename__  # default alias can be overriden by client
 
     def columns(self):
         _ = [self.fields_cache[k] for k in self.fields_cache]
@@ -58,3 +65,7 @@ class Table(object):
 
     def get_field(self, name):
         return self._data.get(name)
+    
+    def AS(self, alias):
+        self._alias = alias
+        return self
