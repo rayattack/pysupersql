@@ -60,7 +60,7 @@ class Table(object):
 
     def columns(self):
         _ = [self.fields_cache[k] for k in self.fields_cache]
-        _ = sorted(_, key=lambda x: x._abs)
+        _ = sorted(_, key=lambda x: x._timestamp)
         return [f"{self.__tablename__}.{col._name}" for col in _]
 
     def get_field(self, name):

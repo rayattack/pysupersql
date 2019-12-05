@@ -1,5 +1,46 @@
 site_name: SuperSQL
-theme: alabaster
+site_url: https://www.github.com/zalando/supersql
+site_description: Python to SQL engine
+site_author: Raymond Ortserga
+
+repo_name: rayattack/supersql
+repo_url: https://www.github.com/zalando/supersql
+
+theme:
+  name: 'material'
+  palette:
+    primary: black
+  include_search_page: false
+  feature:
+    tabs: true
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+nav:
+  - Welcome To Supersql: index.md
+  - Query Deep Dive: query.md
+  - Query Results: results.md
+  - SQL Command Reference:
+      - Function: postgres/functions.md
+  - Tables: tables.md
+  - Database Discovery: database.md
+
+extra:
+  social:
+    - type: globe
+      link: http://opensource.zalando.de
+    - type: github-alt
+      link: https://www.github.com/rayattack
+    - type: twitter
+      link: https://www.twitter.com/raikishi
+    - type: linkedin
+      link: https://www.linkedin.com/in/ortserga
+
+extra_css:
+  - 'custom.css'
 
 markdown_extensions:
   - markdown.extensions.admonition

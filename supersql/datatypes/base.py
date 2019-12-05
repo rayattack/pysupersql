@@ -1,5 +1,7 @@
 from datetime import datetime as clock
 
+from supersql.errors import ArgumentError
+
 
 class Base(object):
     """
@@ -54,12 +56,14 @@ class Base(object):
         self.textsearch = kwargs.get("textsearch")
         self.options = kwargs.get("options")
         self.value = None
+        self.is_not_a_wedding_guest = True
 
         self._print = []
+        self._alias = None
 
         # used to maintain definition order of table schema
         # when SELECT is used/called
-        self._abs = clock.now().timestamp()
+        self._timestamp = clock.now().timestamp()
 
     def __get__(self, instance, metadata):
         return self
@@ -80,30 +84,51 @@ class Base(object):
     def __add__(self, value):
         pass
 
+    def __and__(self, sibling):
+        """
+        a sibling is another column object that also has an
+        overriden and method. The resolution of siblings follows the
+        operator order of python precedence rules and left to right
+        """
+        if not isinstance(sibling, (str, Base)):
+            raise ArgumentError("Invalid argument {sibling} passed to Query.where() method")
+
+        if isinstance(sibling, Base) and sibling.is_not_a_wedding_guest:
+            msg = "Can not use columns alone without an operation in a where clause"
+            raise ArgumentError(msg)
+
+        self._print.append(sibling.print())
+        return self
+
     def __eq__(self, value):
+        self.is_not_a_wedding_guest = False
         self._print.append(f"{self._name} = {value}")
         return self
 
     def __ge__(self, value):
+        self.is_not_a_wedding_guest = False
         return super().__ge__(value)
 
     def __gt__(self, value):
-        pass
+        self.is_not_a_wedding_guest = False
+        return self
 
     def __le__(self, value):
-        return super().__le__(value)
+        self.is_not_a_wedding_guest = False
+    
+    def __lshift__(self, value):...
     
     def __lt__(self, value):
-        return super().__lt__(value)
+        self.is_not_a_wedding_guest = False
     
     def __mod__(self, value):
-        pass
+        self.is_not_a_wedding_guest = False
     
     def __ne__(self, value):
-        raise NotImplementedError
+        self.is_not_a_wedding_guest = False
 
     def __xor__(self, value):
-        pass
+        self.is_not_a_wedding_guest = False
 
     def cast(self, instance, value):
         self.validate(value, instance)
@@ -118,7 +143,7 @@ class Base(object):
         pass
 
     def AS(self, *args, **kwargs):
-        pass
+        self._alias = args[0]
 
     def IN(self, *args, **kwargs):
         pass

@@ -11,12 +11,12 @@ q = Query(**config)
 union = q.SELECT(
     cust.first_name,
     cust.last_name,
-    cust.LITERAL("customer").AS("type")
+    "customer as type"
 ).FROM(cust).UNION(
     q.SELECT(
         staff.first_name,
         staff.last_name,
-        q.LITERAL("customer").AS("type")
+        "customer as type"
     ).FROM(
         staff
     )
@@ -24,11 +24,9 @@ union = q.SELECT(
 
 
 union_all = q.SELECT(
-    cust.first_name + " " + cust.last_name
-).AS(
-    "full_name"
-).SELECT(
-    q.LITERAL("")
+    q.X(cust.first_name + " " + cust.last_name).AS("full_name")
+).FROM(
+).UNION_ALL(
 )
 
 

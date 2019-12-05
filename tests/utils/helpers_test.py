@@ -15,3 +15,4 @@ class HelpersTest(TestCase):
         self.assertEqual("tablename", get_tablename(THREE))
         self.assertEqual("tablename", get_tablename(TWO))
         self.assertEqual("tablename", get_tablename(ONE))
+        self.assertEqual(TABLENAME, get_tablename(TABLENAME))

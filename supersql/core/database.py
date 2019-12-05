@@ -11,3 +11,15 @@ class Database(object):
 
     name {str}: Name of the databas
     """
+
+    def tables(self):
+        """
+        Returns a list of all the tables in the database.
+
+        Each table in the tables collection corresponds to a supersql.core.table.Table
+        instance object.
+
+        Tables to be returned from the database are lazily loaded, that means
+        the real table collection will be inspected upon access.
+        """
+        pass

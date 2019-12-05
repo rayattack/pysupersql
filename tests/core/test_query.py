@@ -11,7 +11,7 @@ from supersql.core.query import _WHERE, _FROM, _SELECT
 NAME = "'GOD is great'"
 
 SELECT = "SELECT play.name, play.cryptic_name, play.more_cryptic, chess.name"
-FROM = "FROM play AS play, chess AS chess"
+FROM = "FROM play AS play"
 WHERE = f"WHERE chess.name = {NAME}"
 
 
@@ -128,7 +128,7 @@ class T(TestCase):
     def test_where(self):
         play = Play()
         c = Chess()
-        prep = self.q.SELECT(play, c.name).FROM(play, c.AS("chess")).WHERE(
+        prep = self.q.SELECT(play, c.name).FROM(play, c).WHERE(
             c.name == NAME
         )
         self.assertEqual(f"{SELECT} {FROM} {WHERE}", prep.print())

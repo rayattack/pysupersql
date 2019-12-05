@@ -1,7 +1,15 @@
-from supersql.core.table import Table
-from supersql.errors import MissingArgumentError, MissingCommandError
+from supersql.errors import (
+    ArgumentError,
+    MissingArgumentError,
+    MissingCommandError
+)
 
-from supersql.utils.helpers import get_tablename
+from .database import Database
+from .keywords import (
+    FROM,
+    WHERE,
+    SELECT
+)
 
 
 SUPPORTED_VENDORS = (
@@ -64,7 +72,7 @@ class Query(object):
         self._password = password
         self._host = host
         self._silent = silent
-        self._print = []
+        self._sql = []
 
         self._pristine = True
         self._disparity = 0  # how many tables is this query for?
@@ -94,7 +102,13 @@ class Query(object):
         )
         return this
     
-    def execute(self):
+    def database(self, name):
+        """
+        Get the database provided by name for inspection or operation
+        """
+        return Database()
+    
+    def execute(self, *args, **kwargs):
         """
         Flushes the SQL command to the server for execution
 
@@ -117,129 +131,52 @@ class Query(object):
         ..return {str}  String representation of the SQL command to be sent
             to the database server if `execute` method is called.
         """
-        return "".join(self._print)
+        return "".join(self._sql)
+    
+    def run(self, *args, **kwargs):
+        return self.execute(*args, **kwargs)
     
     def was_called(self, command):
         return command in self._callstack
     
     def AS(self, alias):
+        """
+        If select was last called then use this as the alias for select
+        """
         self._alias = alias
         return self
 
+    def DELETE(self, *args):...
+
+    def DELETE_FROM(self, *args):...
+    
+    def FETCH(self, *args):...
+
     def FROM(self, *args, **kwargs):
-        """
-        SQL FROM command proxy python method responsible for
-        adding the `from` target of the query object.
-        """
-        # 1. If a query object i.e. q then it should be a copy and not the same
-        # 2. str
-        # 3. It can be a table object i
-        self._callstack.append(_FROM)
+        return FROM(*args, this=self)
+    
+    def GROUP_BY(self, *args):...
 
-        num_of_args = len(args)
-        num_of_tables = len(self._tablenames)
-        # msg = f"Found different tables in SELECT statement but only 1 command received in FROM"
-        msg = f"tables:{num_of_tables}, args:{num_of_args}"
+    def INSERT(self, *args):...
 
-        if num_of_args != num_of_tables:
-            raise MissingArgumentError(msg)
-        
-        for source in args:
-            has_alias = None
-            if isinstance(source, str):
-                _a = None
-                _q = str
-            elif isinstance(source, Query):
-                _a = source._alias
-                _q = f"({source.print()})"
-            elif isinstance(source, Table):
-                _a = source._alias
-                _q = source.__tn__()
-
-            _from = f"{_q} AS {_a}" if _a else f"{_q}"
-            self._from.append(_from)
-
-        _sql = ", ".join(
-            [f"{table}" for table in self._from]
-        ) if len(self._from) > 1 else "".join(table for table in self._from)
-        self._print.extend([_FROM, _sql])
-
-        return self
+    def JOIN(self, *args):...
+    
+    def LIMIT(self, *args):...
+    
+    def ORDER_BY(self, *args):...
 
     def SELECT(self, *args):
-        """SQL SELECT Proxy
-        Mechanism for selecting or specifying subset of data to select
-        from a table, expression or subquery
+        return SELECT(*args, this=Query.clone(self))
+    
+    def UNION(self, *args):...
+    
+    def UPDATE(self, *args):...
 
-        ```sql
-            SELECT * FROM customers WHERE age > 10;
-        ```
+    def UPSERT(self, *args):...
 
-        ```py
-            query = Query("postgres")
-            query.SELECT("*").FROM("customers").WHERE("age > 10")
+    def WHERE(self, condition):
+        return WHERE(this=self, condition=condition)
+    
+    def WITHOUT(self, *args):...
 
-            # with table
-            cust = Customer()
-            query.SELECT(cust).FROM(cust).WHERE(cust.age > 10)
-
-            # other possible ways to query with
-            # a table object
-            # from is omitted as it is obvious from `select`
-            query.SELECT(cust).WHERE(cust.age > 10)
-
-            # "*" can be omitted as it is default but FROM is no longer obvious
-            query.SELECT().FROM(cust).WHERE(cust.age > 10)
-        ```
-        """
-        this = Query.clone(self)
-
-        this._callstack.append(_SELECT)
-
-        num_of_args = len(args)
-        if num_of_args == 0:
-            separator = "*"
-        elif num_of_args == 1:
-            arg = args[0]
-            if isinstance(arg, str):
-                this._tablenames.add(
-                    get_tablename(arg)
-                ) if get_tablename(arg) != arg else this._orphans.add(arg)
-                separator = arg
-            elif isinstance(arg, Table):
-                separator = "*"
-                this._tablenames.add(arg.__tn__())
-            else:
-                separator = arg._name
-                this._tablenames.add(arg._meta.__tn__())
-        else:
-            cols = []
-            for member in args:
-                if isinstance(member, str):
-                    tablename = get_tablename(member)
-                    this._tablenames.add(get_tablename(member)) if tablename != member else None
-                    cols.append(member)
-                elif isinstance(member, Table):
-                    this._tablenames.add(member.__tn__())
-                    cols.extend(member.columns())
-                else:
-                    this._tablenames.add(member._meta.__tn__())
-                    cols.append(f"{member._meta.__tn__()}.{member._name}")
-
-            separator = ", ".join(
-                [col for col in cols]
-            )
-
-        _select_statement = f"SELECT {separator}"
-
-        if this._pristine:
-            this._print.append(_select_statement)
-            this._pristine = False
-
-        return this
-
-    def WHERE(self, *args, **kwargs):
-        if _FROM not in self._callstack:
-            self = self.FROM()
-        self._callstack.append(_WHERE)
-        
+    def WITH_RECURSIVE(self, *args):...

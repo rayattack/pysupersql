@@ -4,15 +4,17 @@ from datetime import date
 
 from supersql.functions import CAST, SUM, COUNT
 
-from .schemas.actor import Actor
-from .schemas.film import Film, ActorFilm
-from .schemas.customer import cust
-from .schemas.rental import rental
+from .tables.actor import Actor
+from .tables.film import Film, ActorFilm
+from .tables.customer import cust
+from .tables.rental import rental
 
 
 query = Query()
 actor = Actor()
 actor_film = ActorFilm()
+
+f = query.FUNCTION()
 
 
 query_cast = query.SELECT(
@@ -21,7 +23,7 @@ query_cast = query.SELECT(
 ).FROM(
     actor
 ).WHERE(
-    query.CAST(actor.last_update).AS(Date) == '2005-05-27'
+    f.cast(actor.last_update).AS(Date) == '2005-05-27'
 )
 
 shorthand_cast = query.SELECT(
@@ -30,7 +32,7 @@ shorthand_cast = query.SELECT(
 ).FROM(
     actor
 ).WHERE(
-    actor.last_update.AS(Date) == '2005-05-27'  # shorthand syntax, notice the absence of query.CAST
+    actor.last_update.AS(Date) == '2005-05-27'  # shorthand syntax, notice the absence of f.CAST
 )
 
 
@@ -43,6 +45,6 @@ function_cast = query.SELECT(
     ).FROM(
         rental
     ).WHERE(
-        CAST(rental.return_date).AS(date) == '2005-05-27'  # using function import
+        f.cast(rental.return_date).AS(date) == '2005-05-27'
     )
 )
