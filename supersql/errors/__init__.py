@@ -42,6 +42,10 @@ class PKError(Exception):
     pass
 
 
+class SQLError(Exception):
+    pass
+
+
 class UnknownFieldError(Exception):
     pass
 

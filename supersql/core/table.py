@@ -52,16 +52,23 @@ class Table(object):
 
     def __init__(self, *args, **kwargs):
         self._data = Localcache()
-        self.__tablename__ = self.__tablename__ or type(self).__name__
-        self.__tablename__ = self.__tablename__.lower()
+        _table = self.__tablename__ or type(self).__name__
+        self.__tablename__ = _table.lower()
 
         self.fields_cache = self.__autospector__()
-        self._alias = self.__tablename__  # default alias can be overriden by client
+        self._alias = None
+        # self._alias = self.__tablename__  # default alias can be overriden by client
 
     def columns(self):
         _ = [self.fields_cache[k] for k in self.fields_cache]
         _ = sorted(_, key=lambda x: x._timestamp)
-        return [f"{self.__tablename__}.{col._name}" for col in _]
+
+        # it table has an alias i.e. part of an heterogeneous collection or explicitly called
+        # use it here otherwise just return the column name without fully qualified table name
+        if self._alias:
+            return [f"{self._alias}.{col._name}" for col in _]
+        else:
+            return [col._name for col in _]
 
     def get_field(self, name):
         return self._data.get(name)

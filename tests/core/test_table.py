@@ -26,6 +26,12 @@ class T(TestCase):
         self.assertEqual("playing", play2.__tablename__)
     
     def test_get_columns(self):
-        _ = ["play.name", "play.age"]
+        _ = ["name", "age"]
         play = Play()
+        self.assertEqual(_, play.columns())
+    
+    def test_get_columns_after_aliasing(self):
+        _ = ["playing.name", "playing.age"]
+        play = Play()
+        play.AS("playing")
         self.assertEqual(_, play.columns())

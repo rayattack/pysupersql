@@ -1,4 +1,5 @@
 from datetime import datetime as clock
+from numbers import Number
 
 from supersql.errors import ArgumentError
 
@@ -66,6 +67,7 @@ class Base(object):
         self._timestamp = clock.now().timestamp()
 
     def __get__(self, instance, metadata):
+        self._imeta = instance
         return self
 
     def __set__(self, instance, value):
@@ -101,9 +103,22 @@ class Base(object):
         return self
 
     def __eq__(self, value):
+        """
+        Equality will always be called by accessing value (i.e. __get__) to compare
+        so we can be certain that instance has been set and can
+        therefore get the alias to use
+        """
         self.is_not_a_wedding_guest = False
-        self._print.append(f"{self._name} = {value}")
-        return self
+        this = self.clone()
+        this._xvalue = value
+        this.value = self.python_to_sql_value(value)
+
+        if this._imeta._alias:
+            this._print.append(f"{this._imeta._alias}.{this._name} = {this.value}")
+        else:
+            this._print.append(f"{this._name} = {this.value}")
+
+        return this
 
     def __ge__(self, value):
         self.is_not_a_wedding_guest = False
@@ -129,15 +144,39 @@ class Base(object):
 
     def __xor__(self, value):
         self.is_not_a_wedding_guest = False
+    
+    def clone(self):
+        this = type(self)()
+        this.pk = self.pk
+        this.required = self.required
+        this.default = self.default
+        this.unique = self.unique
+        this.textsearch = self.textsearch
+        this.options = self.options
+        this.value = self.value
+        this.is_not_a_wedding_guest = self.is_not_a_wedding_guest
+
+        this._print = []
+        this._name = self._name
+        this._imeta = self._imeta
+        this._alias = self._alias
+        this._timestamp = self._timestamp
+        return this
 
     def cast(self, instance, value):
         self.validate(value, instance)
         if isinstance(value, self.py_type):  # pylint: disable=no-member
             return value
         return self.py_type(value)  # pylint: disable=no-member
-    
+
     def print(self) -> str:
         return "".join(self._print)
+    
+    def python_to_sql_value(self, value):
+        if isinstance(value, Number):
+            return value
+        elif isinstance(value, str):
+            return f"'{value}'"
 
     def validate(self, value, instance=None):
         pass

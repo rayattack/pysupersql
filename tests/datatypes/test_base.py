@@ -5,6 +5,7 @@ from supersql.datatypes.base import Base
 
 
 class Holder(Table):
+    __tablename__ = "holdem"
     first_name = Base()
     last_name = Base()
 
