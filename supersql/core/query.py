@@ -2,7 +2,7 @@ from supersql.errors import (
     ArgumentError,
     MissingArgumentError,
     MissingCommandError,
-    SQLError
+    DatabaseError
 )
 
 from .database import Database

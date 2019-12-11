@@ -10,6 +10,45 @@ class _Exception(Exception):
 
         self.msg = f"{msg} raised at: {origin}"
 
+
+class Error(_Exception):
+    pass
+
+
+class InterfaceError(Exception):
+    pass
+
+
+class DatabaseError(Exception):
+    pass
+
+
+class DataError(Exception):
+    pass
+
+
+class OperationalError(_Exception):
+    pass
+
+
+class IntegrityError(Exception):
+    pass
+
+
+class InternalError(Exception):
+    pass
+
+
+class ProgrammingError(Exception):
+    pass
+
+
+class NotSupportedError(Exception):
+    pass
+
+
+# Library Errors
+
 class ArgumentError(_Exception):
     pass
 
@@ -30,19 +69,7 @@ class MissingCommandError(_Exception):
     pass
 
 
-class NotFoundError(Exception):
-    pass
-
-
-class OfflineDocumentError(Exception):
-    pass
-
-
 class PKError(Exception):
-    pass
-
-
-class SQLError(Exception):
     pass
 
 

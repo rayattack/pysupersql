@@ -2,6 +2,18 @@ from supersql.errors import ValidationError
 from supersql.datatypes.base import Base
 
 
+SUBTYPES = (
+    "smallint",
+    "integer",
+    "bigint",
+    "decimal",
+    "real",
+    "smallserial",
+    "serial",
+    "bigserial",
+)
+
+
 class Number(Base):
     """
     Parent of numeric SQL types for method reuse only
