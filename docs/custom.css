@@ -1,4 +1,4 @@
-code {
+/* code {
     color: #000 !important;
 }
 
@@ -25,4 +25,8 @@ code {
 
 pre {
     background-color: #ccc !important;
+} */
+
+.o+.n{
+    color: #864da0;
 }

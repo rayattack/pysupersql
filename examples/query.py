@@ -1,6 +1,8 @@
-from querydoor import Query
-from querydoor import Schema
-from querydoor import Connection
+from supersql import Query
+from supersql import Table
+from supersql import Connection
+
+from supersql import String
 
 
 class Query():
@@ -76,7 +78,7 @@ class Department(Schema):
     __pk__ = ('identifier', 'email')  # Composite primary key
 
     name = String(length=25, required=True, unique=None)
-    identifier = UUID(pg='version_4')
+    identifier = UUID(version=4)
 
 
 # Remember this is a schema not a model, you use it as input into

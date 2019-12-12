@@ -13,6 +13,7 @@ theme:
   include_search_page: false
   feature:
     tabs: true
+  logo: 'images/logo.png'
 
 plugins:
   - search
@@ -21,12 +22,15 @@ plugins:
 
 nav:
   - Welcome To Supersql: index.md
-  - Query Deep Dive: query.md
-  - Query Results: results.md
+  - Table Schema Definition: tables.md
+  - Query Object: query.md
+  - Results Object: results.md
   - SQL Command Reference:
       - Function: postgres/functions.md
-  - Tables: tables.md
   - Database Discovery: database.md
+  - Examples: examples.md
+  - Plugins &amp; Extensions: extensions.md
+
 
 extra:
   social:

@@ -1,15 +1,5 @@
 # Made For Humans
-Supersql is a `very thin wrapper` on top of SQL that enables you write SQL code in python.
-
-
-## Why?
-Let's be honest, creating **SQL** templates with string interpolation is really painful.
-
-Almost all ORMs write the query for you behind the scenes and as such you can only use the interface
-they provide which most times is not enough for complex query needs.
-
-SqlAlchemy is almost different, and SuperSQL is not trying to be a replacement, it just takes you
-closer to SQL than any other library (at least at the time it was created), this allows you to:
+Supersql is a `very thin wrapper` on top of SQL that enables you write SQL code with python.
 
 - Take the full power of python to SQL
 - Create advanced queries i.e. `Recursive Queries, Joins, Functions, Triggers, DDL` etc.
@@ -18,12 +8,46 @@ closer to SQL than any other library (at least at the time it was created), this
 
 ## Query Quickstart
 
-There are 4 ways to query your data in SuperSQL
+There are 4 ways to query your data using SuperSQL
 
-- Manually create a Supersql _**Table**_ schema
-- Automatically reflect a table schema object from the database
-- Use _`dict`_ and _`list`_ with **variables**
 - Identifier Interpolation
+- Manually create a _**Table**_ schema
+- Automatically reflect tables from the database
+- Use _`dict`_ and _`list`_ with **variables**
+
+
+&nbsp;
+#### Identifier Interpolation
+
+```py
+from os import environ
+from supersql import Query
+
+user = environ.get('DB_USER')
+pwd = environ.get('DB_PWD')
+dialect = environ.get('DB_ENGINE')
+
+query = Query(vendor=dialect, user=user, password=pwd)
+
+results = query.SELECT(
+    "first_name", "last_name", "email"
+).FROM(
+    "employees"
+).WHERE(
+    "email = 'someone@example.com'"
+).run()
+
+```
+
+!!!warning "Magic Literals Are Bad"
+    It is usually not advisable to repeat string or other constants in multiple places across your codebase.
+    If you notice string or literal values repeating more than once consider turning them into constants.
+
+
+!!!info "Identifiers ONLY"
+    It is advisable to limit use of strings to only identifiers e.g. `column names`, `table names`, `...`
+    and operators `=`, `<>` etc.
+
 
 
 &nbsp;
@@ -39,7 +63,7 @@ from supersql import (
 
 
 class Employee(Table):
-    identifier = UUID(postgres='uuid_version1')
+    identifier = UUID(version=4)
     first_name = String(required=True)
     last_name = String(25)
     email = String(25, required=True, unique=True)
@@ -56,17 +80,21 @@ results = query.SELECT(
     emp
 ).WHERE(
     emp.email == 'someone@example.com'
-).execute()
+).execute()  # `execute` fetches all data into memory
 
 ```
+
+!!!danger "Run vs Execute"
+    `execute()` fetches all data into memory. Do not use with unsafe queries to large tables
+    e.g. `SELECT * FROM very_large_table`. Use `run()` as it fetches data in chunks and
+    reconnects as necessary to fetch more data.
+
+
+
 &nbsp;
 #### Auto-Reflect Table Schema
 ```py
-from supersql import Query
-from mycodebase import config_dict
-
-
-query = Query(...)  # connection parameters as required
+...
 
 
 tables = query.database("dbname").tables()
@@ -79,7 +107,7 @@ results = query.SELECT(
     emp
 ).WHERE(
     emp.email == 'someone@example.com'
-).execute()  # same as run()
+).execute()
 
 ```
 
@@ -95,39 +123,6 @@ query = Query(...)  # connection parameters as required
 def example(table, *args, **kwargs)
     alt_results = query.SELECT(*args).FROM(table).WHERE(**kwargs).run()
 ```
-
-&nbsp;
-
-#### Identifier Interpolation
-
-Identifier interpolation allows you to use strings and constant values in place of column names and
-other identifiers.
-
-```py
-
-from supersql import Query
-
-query = Query()
-
-# Notice that we 
-results = query.SELECT(
-    "first_name", "last_name", "email"
-).FROM(
-    "employees"
-).WHERE(
-    "email = 'someone@example.com'"
-).run()
-
-```
-
-!!!info "Identifiers ONLY"
-    It is advisable to limit use of strings to only identifiers e.g. `column names`, `table names`, `...`
-    and operators `=`, `<>`, `<` etc.
-
-
-!!!danger "Magic Literals Are Bad"
-    It is usually not advisable to repeat string or other constants in multiple places across your codebase.
-    If you notice string or literal values repeating more than once consider turning them into constants.
 
 
 &nbsp;
