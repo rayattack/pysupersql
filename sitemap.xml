@@ -1,126 +1,126 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url>
-     <loc>https://www.github.com/raymond/supersql/</loc>
+     <loc>https://www.github.com/rayattack/supersql/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/tables/</loc>
+     <loc>https://www.github.com/rayattack/supersql/tables/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/query/</loc>
+     <loc>https://www.github.com/rayattack/supersql/query/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/results/</loc>
+     <loc>https://www.github.com/rayattack/supersql/results/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/postgres/functions/</loc>
+     <loc>https://www.github.com/rayattack/supersql/postgres/functions/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/database/</loc>
+     <loc>https://www.github.com/rayattack/supersql/database/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/between/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/between/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/cast/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/cast/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/concat-alias/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/concat-alias/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/connecting/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/connecting/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/cursor/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/cursor/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/delete/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/delete/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/enum/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/enum/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/excepts/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/excepts/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/fetch/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/fetch/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/function/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/function/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/group-by/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/group-by/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/in-select/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/in-select/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/join/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/join/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/null/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/null/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/query/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/query/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/results/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/results/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/unary/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/unary/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/union/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/union/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/update/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/update/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/upsert/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/upsert/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/where/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/where/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/with-recursive/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/with-recursive/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/with/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/with/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/examples/without-query/</loc>
+     <loc>https://www.github.com/rayattack/supersql/examples/without-query/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
-     <loc>https://www.github.com/raymond/supersql/extensions/</loc>
+     <loc>https://www.github.com/rayattack/supersql/extensions/</loc>
      <lastmod>2020-10-04</lastmod>
      <changefreq>daily</changefreq>
     </url>
