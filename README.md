@@ -1,7 +1,17 @@
 Supersql Library
 ================
 
-Supersql is a `very thin wrapper` on top of SQL that enables you write SQL code in python easily.
+Supersql is a python superset of SQL. It allows you leverage the full power of python to
+write your SQL queries.
+
+```sql
+SELECT * FROM customers ORDER BY last_name ASC LIMIT 5
+```
+
+
+```py
+query.SELECT().FROM(customer).ORDER_BY(-last_name).LIMIT(5)
+```
 
 &nbsp;
 

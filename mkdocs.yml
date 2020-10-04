@@ -1,0 +1,91 @@
+site_name: SuperSQL
+site_url: https://www.github.com/raymond/supersql
+site_description: Python to SQL engine
+site_author: Raymond Ortserga
+
+repo_name: rayattack/supersql
+repo_url: https://www.github.com/raymond/supersql
+
+theme:
+  name: 'material'
+  palette:
+    primary: black
+  include_search_page: false
+  features:
+    - navigation.tabs
+    - navigation.instant
+  logo: images/logo.png
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+nav:
+  - Welcome To Supersql: index.md
+  - Create Database Tables in Python: tables.md
+  - Query Data From Database: query.md
+  - View and Use Query Results: results.md
+  - SQL Command Reference:
+      - Function: postgres/functions.md
+  - Database Discovery: database.md
+  - Examples:
+    - BETWEEN: examples/between.md
+    - CAST: examples/cast.md
+    - CONCAT Alias: examples/concat-alias.md
+    - Connection: examples/connecting.md
+    - Cursor: examples/cursor.md
+    - DELETE: examples/delete.md
+    - ENUM: examples/enum.md
+    - Excepts: examples/excepts.md
+    - Fetch: examples/fetch.md
+    - Function: examples/function.md
+    - GROUP BY: examples/group-by.md
+    - IN Select: examples/in-select.md
+    - JOIN: examples/join.md
+    - NULL: examples/null.md
+    - QUERY: examples/query.md
+    - Results: examples/results.md
+    - Unary: examples/unary.md
+    - UNION: examples/union.md
+    - UPDATE: examples/update.md
+    - UPSERT: examples/upsert.md
+    - WHERE: examples/where.md
+    - WITH RECURSIVE: examples/with-recursive.md
+    - WITH: examples/with.md
+    - Without Query Object: examples/without-query.md
+  - Plugins &amp; Extensions: extensions.md
+
+
+extra_css:
+  - 'custom.css'
+
+markdown_extensions:
+  - markdown.extensions.admonition
+  - markdown.extensions.codehilite:
+      guess_lang: false
+  - markdown.extensions.def_list
+  - markdown.extensions.footnotes
+  - markdown.extensions.meta
+  - markdown.extensions.toc:
+      permalink: true
+  - pymdownx.arithmatex
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: squidfunk
+      repo: mkdocs-material
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde

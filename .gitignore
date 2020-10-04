@@ -1,0 +1,23 @@
+# env files
+.env
+envssql
+
+
+dist/
+examples/javoid/
+examples/**
+
+# editor files
+.vscode/
+sqltools_*
+
+# garbage bound files
+**/**/__pycache__
+scratchpad.log
+play.py
+scratchpad.py
+
+
+# sensitives
+examples/altcomplex.py
+examples/complex.py
