@@ -1,10 +1,10 @@
 site_name: SuperSQL
-site_url: https://www.github.com/raymond/supersql
+site_url: https://www.github.com/rayattack/supersql
 site_description: Python to SQL engine
 site_author: Raymond Ortserga
 
 repo_name: rayattack/supersql
-repo_url: https://www.github.com/raymond/supersql
+repo_url: https://www.github.com/rayattack/supersql
 
 theme:
   name: 'material'
