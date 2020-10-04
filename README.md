@@ -38,7 +38,7 @@ results = query.SELECT(
         'first_name', 'last_name', 'email'
     ).FROM(
         'employees'
-    ).WHERE('email', equals='someone@example.com').run()
+    ).WHERE('email = someone@example.com').run()
 
 
 for result in results:
@@ -73,7 +73,7 @@ results = query.SELECT(
 ).FROM(
     emp
 ).WHERE(
-    emp.email, equals='someone@example.com'
+    emp.email == someone@example.com'
 ).run()
 ```
 
@@ -83,3 +83,6 @@ results = query.SELECT(
 # NOTE: Still Very Much In Development -- Expected Launch Date (November 11 2019)
 
 Supersql is not installable until launch
+
+
+Visit the [Documentation, Examples &amp; Tutorials](https://rayattack.github.io/supersql) for SuperSQL.
