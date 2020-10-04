@@ -3,6 +3,8 @@ from numbers import Number
 
 from supersql.errors import ArgumentError
 
+from supersql.constants import COUNTERPARTS
+
 
 class Base(object):
     """
@@ -56,6 +58,10 @@ class Base(object):
         self.unique = kwargs.get("unique")
         self.textsearch = kwargs.get("textsearch")
         self.options = kwargs.get("options")
+
+        self.precision = kwargs.get("precision", "")
+        self.constraints = kwargs.get("constraints", "")
+
         self.value = None
         self.is_not_a_wedding_guest = True
 
@@ -168,6 +174,13 @@ class Base(object):
         if isinstance(value, self.py_type):  # pylint: disable=no-member
             return value
         return self.py_type(value)  # pylint: disable=no-member
+    
+    def ddl(self, vendor):
+        """Returns a DDL snippet for this object"""
+        supersql_type = type(self).__name__.lower()
+        sql_counterpart = COUNTERPARTS.get(vendor).get(supersql_type)
+
+        return f"{self._name} {sql_counterpart}{self.precision}{self.constraints}"
 
     def print(self) -> str:
         return "".join(self._print)

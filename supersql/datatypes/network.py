@@ -1,0 +1,13 @@
+from supersql.datatypes.base import Base
+
+
+class Network(Base):...
+
+
+class cidr(Network):...
+
+
+class inet(Network):...
+
+
+class macaddr(Network):...

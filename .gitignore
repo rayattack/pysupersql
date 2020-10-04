@@ -1,5 +1,11 @@
+# env files
+.env
+envssql
+
+
 dist/
 examples/javoid/
+examples/**
 
 # editor files
 .vscode/

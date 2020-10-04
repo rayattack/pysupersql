@@ -1,13 +1,10 @@
 
 from supersql.datatypes.numeric import (
-    Bigint,
+	Number,
     Decimal,
-    Double,
     Integer,
     Money,
-    Real,
-    Serial,
-    Smallint,
 )
 
 from supersql.datatypes.string import String
+from supersql.datatypes.uuid import UUID

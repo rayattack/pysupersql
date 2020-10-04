@@ -4,6 +4,7 @@ from supersql.errors import (
     MissingCommandError,
     DatabaseError
 )
+from supersql.connection import connection
 
 from .database import Database
 from .table import Table
@@ -182,6 +183,11 @@ class Query(object):
         """
         self._alias = alias
         return self
+    
+    def CREATE(self, table):
+        this = self._clone()
+        this._sql.append(table.ddl(this._vendor))
+        return this
 
     def DELETE(self, table):
         return self.DELETE_FROM(table)

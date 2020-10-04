@@ -1,6 +1,6 @@
 from supersql import (
     Decimal,
     Integer,
-    Real,
-    Smallint,
+    Number,
+    Money,
 )

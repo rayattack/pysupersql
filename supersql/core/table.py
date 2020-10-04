@@ -4,12 +4,13 @@ collection i.e. table view etal
 """
 
 
+CREATE_K = "CREATE {table}(\n\t"
+NEWLINE = "\n"
+
+
 class Localcache(object):
     def __init__(self, *args, **kwargs):
         self._data = {}
-
-    def __getattribute__(self, name):
-        pass
 
     def __getitem__(self, name):
         return self[name]
@@ -39,6 +40,15 @@ class Table(object):
     """
     __tablename__ = None
 
+    def __init__(self, *args, **kwargs):
+        self._data = Localcache()
+        _table = self.__tablename__ or type(self).__name__
+        self.__tablename__ = _table.lower()
+
+        self.fields_cache = self.__autospector__()
+        self._alias = None
+        # self._alias = self.__tablename__  # default alias can be overriden by client
+
     @classmethod
     def __autospector__(cls, *args, **kwargs):
         from supersql.datatypes.base import Base
@@ -50,21 +60,14 @@ class Table(object):
             return cls.__tablename__.lower()
         return cls.__name__.lower()
 
-    def __init__(self, *args, **kwargs):
-        self._data = Localcache()
-        _table = self.__tablename__ or type(self).__name__
-        self.__tablename__ = _table.lower()
-
-        self.fields_cache = self.__autospector__()
-        self._alias = None
-        # self._alias = self.__tablename__  # default alias can be overriden by client
-
     def columns(self):
         _ = [self.fields_cache[k] for k in self.fields_cache]
         _ = sorted(_, key=lambda x: x._timestamp)
 
         # it table has an alias i.e. part of an heterogeneous collection or explicitly called
         # use it here otherwise just return the column name without fully qualified table name
+        self._data = _
+
         if self._alias:
             return [f"{self._alias}.{col._name}" for col in _]
         else:
@@ -72,7 +75,24 @@ class Table(object):
 
     def get_field(self, name):
         return self._data.get(name)
-    
+
+    @classmethod
+    def ddl(cls, vendor):
+        _comma = ","
+        _newline = "\n"
+        _fourspaces = "\t"
+        column_placeholder = f"{_comma}{_newline}{_fourspaces}"
+
+        _ = []
+        instance = cls()
+        columns = instance.columns()  # called to load _data
+
+        for column in instance._data:
+            _.append(f"{column.ddl(vendor)}")
+
+        all_columns = column_placeholder.join(_)
+        return f"""CREATE TABLE {cls.__tn__()} (\n    {all_columns}\n)"""
+
     def AS(self, alias):
         self._alias = alias
         return self

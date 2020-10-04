@@ -1,19 +1,20 @@
 site_name: SuperSQL
-site_url: https://www.github.com/zalando/supersql
+site_url: https://www.github.com/raymond/supersql
 site_description: Python to SQL engine
 site_author: Raymond Ortserga
 
 repo_name: rayattack/supersql
-repo_url: https://www.github.com/zalando/supersql
+repo_url: https://www.github.com/raymond/supersql
 
 theme:
   name: 'material'
   palette:
     primary: black
   include_search_page: false
-  feature:
-    tabs: true
-  logo: 'images/logo.png'
+  features:
+    - navigation.tabs
+    - navigation.instant
+  logo: images/logo.png
 
 plugins:
   - search
@@ -22,26 +23,39 @@ plugins:
 
 nav:
   - Welcome To Supersql: index.md
-  - Table Schema Definition: tables.md
-  - Query Object: query.md
-  - Results Object: results.md
+  - Create Database Tables in Python: tables.md
+  - Query Data From Database: query.md
+  - View and Use Query Results: results.md
   - SQL Command Reference:
       - Function: postgres/functions.md
   - Database Discovery: database.md
-  - Examples: examples.md
+  - Examples:
+    - BETWEEN: examples/between.md
+    - CAST: examples/cast.md
+    - CONCAT Alias: examples/concat-alias.md
+    - Connection: examples/connecting.md
+    - Cursor: examples/cursor.md
+    - DELETE: examples/delete.md
+    - ENUM: examples/enum.md
+    - Excepts: examples/excepts.md
+    - Fetch: examples/fetch.md
+    - Function: examples/function.md
+    - GROUP BY: examples/group-by.md
+    - IN Select: examples/in-select.md
+    - JOIN: examples/join.md
+    - NULL: examples/null.md
+    - QUERY: examples/query.md
+    - Results: examples/results.md
+    - Unary: examples/unary.md
+    - UNION: examples/union.md
+    - UPDATE: examples/update.md
+    - UPSERT: examples/upsert.md
+    - WHERE: examples/where.md
+    - WITH RECURSIVE: examples/with-recursive.md
+    - WITH: examples/with.md
+    - Without Query Object: examples/without-query.md
   - Plugins &amp; Extensions: extensions.md
 
-
-extra:
-  social:
-    - type: globe
-      link: http://opensource.zalando.de
-    - type: github-alt
-      link: https://www.github.com/rayattack
-    - type: twitter
-      link: https://www.twitter.com/raikishi
-    - type: linkedin
-      link: https://www.linkedin.com/in/ortserga
 
 extra_css:
   - 'custom.css'
