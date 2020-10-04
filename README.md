@@ -1,13 +1,13 @@
-Supersql Library
-================
+## Supersql Library
+
+View [Documentation, Examples &amp; Tutorials](https://rayattack.github.io/supersql) for SuperSQL.
+
 
 Supersql is a python superset of SQL. It allows you leverage the full power of python to
 write your SQL queries.
 
-# NOTE: Still Very Much In Development
 
-Visit the [Documentation, Examples &amp; Tutorials](https://rayattack.github.io/supersql) for SuperSQL.
-
+### NOTE: Still Very Much In Development
 
 ```sql
 SELECT * FROM customers ORDER BY last_name ASC LIMIT 5
