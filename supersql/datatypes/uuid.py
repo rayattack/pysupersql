@@ -11,20 +11,20 @@ class UUID(Base):
         self.textsearch = kwargs.get("textsearch")
         self.options = kwargs.get("options")
 
-        self.precision = kwargs.get("precision", "")
+        self.uuid_version = kwargs.get("uuid_version", "")
 
         self.value = None
         self.is_not_a_wedding_guest = True
 
         self._print = []
         self._alias = None
-        self._constraints = list(args)
+        self._constraints = [kwargs]
 
         super(UUID, self).__init__(*args, **kwargs)
 
     @property
     def constraints(self):
-        return f"({self._constraints[0]})"
+        return f"({self._constraints})"
 
     @constraints.setter
     def constraints(self, value):

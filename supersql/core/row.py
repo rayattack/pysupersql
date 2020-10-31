@@ -1,4 +1,7 @@
-
+"""
+Row and Records classes representing data fetched from the database
+after a query has been executed
+"""
 
 
 class Row(dict):
@@ -25,3 +28,8 @@ class Row(dict):
             (name in the table or alias given to the query)
         """
         pass
+
+
+class Record(object):
+    """A record is a collection of rows"""
+    pass

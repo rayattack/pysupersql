@@ -77,7 +77,7 @@ class Table(object):
         return self._data.get(name)
 
     @classmethod
-    def ddl(cls, vendor):
+    def ddl(cls, vendor, safe=True):
         _comma = ","
         _newline = "\n"
         _fourspaces = "\t"
@@ -87,11 +87,13 @@ class Table(object):
         instance = cls()
         columns = instance.columns()  # called to load _data
 
+        if_not_exists = 'IF NOT EXISTS ' if safe else ''
+
         for column in instance._data:
             _.append(f"{column.ddl(vendor)}")
 
         all_columns = column_placeholder.join(_)
-        return f"""CREATE TABLE {cls.__tn__()} (\n    {all_columns}\n)"""
+        return f"""CREATE TABLE {if_not_exists}{cls.__tn__()} (\n\t{all_columns}\n)"""
 
     def AS(self, alias):
         self._alias = alias

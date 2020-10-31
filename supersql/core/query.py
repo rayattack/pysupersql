@@ -9,20 +9,26 @@ from supersql.connection import connection
 from .database import Database
 from .table import Table
 
+_pg = "postgres"
+_ox = "oracle"
+_my = "mysql"
+_ms = "mssql"
 
-SUPPORTED_VENDORS = (
-    "postgres",
-    "postgresql",
-    "oracle",
-    "oracledb",
-    "mariadb",
-    "mysql",
-    "mssql",
-    "sqlserver",
-    "athena",
-    "presto"
-)
+SUPPORTED_VENDORS = {
+    "postgres": _pg,
+    "postgresql": _pg,
+    "oracle": _ox,
+    "oracledb": _ox,
+    "mariadb": _my,
+    "mysql": _my,
+    "mssql": _ms,
+    "sqlserver": _ms,
+    "sqlite": "sqlite"
+}
 
+
+
+# The underscore denotes presence of space before chars for cognitive reasons
 _AND = " AND"
 DELETE = "DELETE"
 SELECT = "SELECT"
@@ -39,7 +45,7 @@ class Query(object):
     generating vendor specific SQL strings.
     """
 
-    def __init__(self, vendor, user=None, password=None, host=None, silent=True):
+    def __init__(self, vendor, user=None, password=None, host=None, silent=True, pool=False):
         """Query constructor
         Sets up a query engine for use by saving initialization
         parameters internally for use in connecting to the backing
@@ -66,6 +72,9 @@ class Query(object):
             supersql check for an error in your prepared query before even
             sending it out to the database engine?
             Defaults to `True` i.e. do not check for errors
+        
+        pool {bool | optional}:
+            Should the connection be made using connection pooling or not
         """
         if vendor not in SUPPORTED_VENDORS:
             raise NotImplementedError(f"{vendor} is not a supersql supported engine")
@@ -74,6 +83,7 @@ class Query(object):
         self._password = password
         self._host = host
         self._silent = silent
+        self._pool = pool
         self._sql = []
 
         self._pristine = True
@@ -101,7 +111,7 @@ class Query(object):
             host=self._host,
             silent=self._silent
         )
-    
+
     def _conditionator(self, condition):
         if isinstance(condition, str):
             return f" {condition}"
@@ -109,15 +119,15 @@ class Query(object):
             try:
                 return f" {condition.print()}"
             except AttributeError:
-                msg = "Where clause can only process strings or column comparison operations"
+                msg = "Condition clause `WHERE` can only process strings or column comparison operations"
                 raise ArgumentError(msg)
-    
+
     def database(self, name):
         """
         Get the database provided by name for inspection or operation
         """
         return Database()
-    
+
     def execute(self, *args, **kwargs):
         """
         Flushes the SQL command to the server for execution
@@ -132,7 +142,7 @@ class Query(object):
             sent from preparation of your query. Wraps the message of the
             database server internally for easy debugging.
         """
-        pass
+        return connection(self)
 
     def get_tablename(self, table):
         """
@@ -150,7 +160,7 @@ class Query(object):
         else:
             column = table
             return column._imeta.__tn__()
-    
+
     def print(self):
         """
         Prints the current SQL statement as it exists on the query object
@@ -159,18 +169,25 @@ class Query(object):
             to the database server if `execute` method is called.
         """
         return "".join(self._sql)
-    
+
     def run(self, *args, **kwargs):
+        """
+        This works the same as execute but returns iterable results
+        that can be traversed via a cursor as opposed to fetching all results
+        into memory.
+        
+        For errors and parameter options see :func: `~supersql.core.query.Query.execute`
+        """
         return self.execute(*args, **kwargs)
-    
+
     def was_called(self, command):
         return command in self._callstack
-    
+
     def warn(self, command):
         if self._callstack[-1] == command:
             msg = f'Invalid Query Chaining: repeated {command} more than once'
             raise SQLError(msg)
-    
+
     def AND(self, condition):
         self._sql.append(_AND)
         sql_snippet = self._conditionator(condition)
@@ -179,14 +196,28 @@ class Query(object):
 
     def AS(self, alias):
         """
+        # ? Revisit this docstring to make the op for this method clearer and more understandable
         If select was last called then use this as the alias for select
         """
         self._alias = alias
         return self
-    
-    def CREATE(self, table):
+
+    def CREATE(self, table, safe=True):
+        """
+        Create a database bound entity table/database/extension/view etc
+        currently supports only table creation.
+
+        ..params:
+
+        table {str, Table, Database, View, Extension | required}
+
+        safe {boolean | optional}
+            Set to false to set as unsafe as raise an error if table already
+            exists and a create statement is issued otherwise 'IF NOT EXISTS' is
+            added to the create table statement.
+        """
         this = self._clone()
-        this._sql.append(table.ddl(this._vendor))
+        this._sql.append(table.ddl(this._vendor, safe))
         return this
 
     def DELETE(self, table):
@@ -199,7 +230,7 @@ class Query(object):
             tablename = table
         elif isinstance(table, Table):
             tablename = table.__tn__()
-        
+
         this._tablenames.add(tablename)
         sqlstatement = f'DELETE FROM {tablename}'
         this._sql.append(sqlstatement)
@@ -246,15 +277,15 @@ class Query(object):
         self._sql.extend([_FROM_, _sql])
 
         return self
-    
+
     def GROUP_BY(self, *args):...
 
     def INSERT(self, *args):...
 
     def JOIN(self, *args):...
-    
+
     def LIMIT(self, *args):...
-    
+
     def ORDER_BY(self, *args):...
 
     def SELECT(self, *args):
@@ -320,9 +351,9 @@ class Query(object):
         #     this._pristine = False
         this._sql.append(_select_statement)
         return this
-    
+
     def UNION(self, *args):...
-    
+
     def UPDATE(self, *args):...
 
     def UPSERT(self, *args):...
@@ -349,7 +380,7 @@ class Query(object):
         self._sql.append(sql_snippet)
 
         return self
-    
+
     def WITHOUT(self, *args):...
 
     def WITH_RECURSIVE(self, *args):...

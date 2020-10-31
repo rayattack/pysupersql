@@ -59,8 +59,7 @@ class Base(object):
         self.textsearch = kwargs.get("textsearch")
         self.options = kwargs.get("options")
 
-        self.precision = kwargs.get("precision", "")
-        self.constraints = kwargs.get("constraints", "")
+        self.arguments = args
 
         self.value = None
         self.is_not_a_wedding_guest = True
@@ -169,23 +168,50 @@ class Base(object):
         this._timestamp = self._timestamp
         return this
 
+    @property
+    def constraints(self):
+        """
+        Look at the args and keyword args and use the vendor selected
+        to generate the right constraints.
+
+        Possible constraints can come from:
+            - args[0..n] like 25 signifying that the maximum length of varchar should be this number
+            - kwarg['default'] i.e. the default value to be used for a thing
+        """
+        pass
+
     def cast(self, instance, value):
         self.validate(value, instance)
         if isinstance(value, self.py_type):  # pylint: disable=no-member
             return value
         return self.py_type(value)  # pylint: disable=no-member
-    
+
     def ddl(self, vendor):
         """Returns a DDL snippet for this object"""
         supersql_type = type(self).__name__.lower()
         sql_counterpart = COUNTERPARTS.get(vendor).get(supersql_type)
 
-        return f"{self._name} {sql_counterpart}{self.precision}{self.constraints}"
+        has_pk = ' PRIMARY KEY' if self.pk else ''
+        nullable = ' NOT NULL' if self.required else ''
+        default = f' DEFAULT {self.default}' if self.default else ''
+
+        return f"{self._name} {sql_counterpart}{self.precision}{has_pk}{nullable}{default}"
+    
+    @property
+    def precision(self):return ''
 
     def print(self) -> str:
         return "".join(self._print)
-    
+
     def python_to_sql_value(self, value):
+        """
+        Converts a python value to the closest matching SQL counterpart
+
+        ..params:
+
+        value {any | required}:
+            The py value to be coerced into an sql value
+        """
         if isinstance(value, Number):
             return value
         elif isinstance(value, str):

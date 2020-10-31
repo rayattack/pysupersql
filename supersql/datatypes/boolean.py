@@ -4,7 +4,7 @@ from supersql.datatypes.base import Base
 
 class Boolean(Base):
     """
-    Represents a boolean field in the firestore Document instance
+    Represents a boolean field in the Table instance
 
     .. py:function:: enumerate(sequence[, start=0])
 
