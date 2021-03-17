@@ -35,7 +35,7 @@ class Table(object):
     utility methods and properties that match the definitions
     in your table. I.e. if you define a custom table with a varchar(24)
     property called name, then result.name will return the value for that
-    row and column combination i.e. Result.cell(row, col).
+    row and column combination i.e. Results.cell(row: int, col: str).
     """
     __tablename__ = None
 

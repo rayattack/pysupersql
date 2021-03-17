@@ -23,7 +23,7 @@ class T(TestCase):
 
     def test_index(self):
         h = Holder()
-        self.assertTrue(h.first_name._timestamp < h.last_name._timestamp)
+        self.assertTrue(h.first_name._timestamp <= h.last_name._timestamp)
     
     def test_alias(self):
         h = Holder()

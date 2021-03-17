@@ -24,3 +24,8 @@ build-backend = "poetry.masonry.api"
 
 [tool.poetry.scripts]
 supersql = 'supersql:main'
+
+[tool.poetry.extras]
+mysql = ["aiomysql"]
+postgres = ["asyncpg"]
+sqlite = ["aiosqlite"]

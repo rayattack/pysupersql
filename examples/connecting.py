@@ -24,4 +24,6 @@ q = Query("postgresql:::localhost/mydatabase(username:::mypassword)", esc=":::")
 
 
 host = "postgresql:=localhost:5432/mydatabase"
+
+# Is this still required? Not sure
 prompt_for_password = Query(user="postgres", prompt_password=True, host=host)

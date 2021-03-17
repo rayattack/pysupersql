@@ -1,7 +1,18 @@
 from datetime import datetime as clock
 from numbers import Number
+from typing import TypedDict
 
 from supersql.errors import ArgumentError
+
+
+class BaseConstructorArgs(TypedDict):
+    pk: str
+    required: bool
+    default: str
+    unique: bool
+    textsearch: bool
+    options: dict
+    value: str
 
 
 class Base(object):
@@ -49,7 +60,7 @@ class Base(object):
     like it's SQL counterpart i.e. LIKE
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs: BaseConstructorArgs):
         self.pk = kwargs.get("pk")
         self.required = kwargs.get("required")
         self.default = kwargs.get("default")

@@ -1,3 +1,5 @@
+from typing import Union
+
 from supersql.errors import (
     ArgumentError,
     MissingArgumentError,
@@ -10,6 +12,7 @@ from .table import Table
 
 
 SUPPORTED_VENDORS = (
+    "sqlite",
     "postgres",
     "postgresql",
     "oracle",
@@ -84,7 +87,9 @@ class Query(object):
         self._orphans = set()
         self._alias = None
 
-    def _clone(self):
+        self._database = Database(self)
+
+    def _clone(self) -> "Query":
         """
         # ! Why copy of Query object is returned
         # A copy of query is returned so internal query variables do not
@@ -111,12 +116,13 @@ class Query(object):
                 msg = "Where clause can only process strings or column comparison operations"
                 raise ArgumentError(msg)
     
-    def database(self, name):
+    @property
+    def database(self) -> Database:
         """
-        Get the database provided by name for inspection or operation
+        Get the database for inspection or operation
         """
-        return Database()
-    
+        return self._database
+
     def execute(self, *args, **kwargs):
         """
         Flushes the SQL command to the server for execution
@@ -133,7 +139,7 @@ class Query(object):
         """
         pass
 
-    def get_tablename(self, table):
+    def get_tablename(self, table: Union[str, Table, None]) -> str:
         """
         Irrespective of the type of naming convention used i.e.
         3 part "schema.table.columnname" or 4 part "db.schema.table.columnname"

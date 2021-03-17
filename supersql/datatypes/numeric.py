@@ -53,7 +53,7 @@ class Number(Base):
         # Here an inspection of the class is necessary to allow for recognition
         # of the field type and allow the conversion from one numeric type
         # to another numeric type i.e. int -> float -> int as appropriate
-        if self.__class__.__name__ is "Integer":
+        if self.__class__.__name__ == "Integer":
             if isinstance(value, float) and self.coerce:
                 return int(value)
             if isinstance(value, float):
@@ -63,7 +63,7 @@ class Number(Base):
 
         # Unlike float -> int where precision loss is possible, converting an
         # integer value to float does mot raise a value error
-        if self.__class__.__name__ is "Float" and isinstance(value, int):
+        if self.__class__.__name__ == "Float" and isinstance(value, int):
             return float(value)
 
         # Apply minimum and maximum equality checks only after ensuring
