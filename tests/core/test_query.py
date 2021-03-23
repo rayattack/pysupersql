@@ -1,10 +1,10 @@
-from unittest import TestCase
+from unittest import TestCase, skip
 
 from supersql import Query, Table
 from supersql import String
 from supersql.errors import MissingArgumentError
 
-from supersql.core.query import SUPPORTED_VENDORS
+from supersql.core.query import SUPPORTED_ENGINES
 from supersql.core.query import SELECT
 
 
@@ -43,15 +43,15 @@ class T(TestCase):
         self.assertEqual(f"{SELECT_STATEMENT} {FROM}{_CHESS}", prep.print())
 
     def test_supported(self):
-        for vendor in SUPPORTED_VENDORS:
-            q = Query(vendor)
+        for engine in SUPPORTED_ENGINES[:3]:
+            q = Query(engine)
             self.assertIsInstance(q, Query)
 
     def test_unsupported(self):
         with self.assertRaises(NotImplementedError):
             q = Query("mongodb")
 
-    def test_vendor_required(self):
+    def test_engine_required(self):
         with self.assertRaises(TypeError):
             q = Query()
 

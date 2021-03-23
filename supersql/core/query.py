@@ -11,7 +11,7 @@ from .database import Database
 from .table import Table
 
 
-SUPPORTED_VENDORS = (
+SUPPORTED_ENGINES = (
     "sqlite",
     "postgres",
     "postgresql",
@@ -38,10 +38,10 @@ class Query(object):
 
     A query is the work horse for supersql as it is in SQL. Queries
     can be connected to the database or isolated and used for only
-    generating vendor specific SQL strings.
+    generating engine specific SQL strings.
     """
 
-    def __init__(self, vendor, user=None, password=None, host=None, silent=True):
+    def __init__(self, engine, user=None, password=None, host=None, port=None, database=None, silent=True):
         """Query constructor
         Sets up a query engine for use by saving initialization
         parameters internally for use in connecting to the backing
@@ -52,7 +52,6 @@ class Query(object):
         engine {str | required}:
             The database engine i.e. postgres, oracle,
             mysql, mssql etc.
-
         user {str | optional}:
             The user to connect as
         
@@ -69,12 +68,14 @@ class Query(object):
             sending it out to the database engine?
             Defaults to `True` i.e. do not check for errors
         """
-        if vendor not in SUPPORTED_VENDORS:
-            raise NotImplementedError(f"{vendor} is not a supersql supported engine")
-        self._vendor = vendor
+        if engine not in SUPPORTED_ENGINES:
+            raise NotImplementedError(f"{engine} is not a supersql supported engine")
+        self._engine = engine
         self._user = user
         self._password = password
         self._host = host
+        self._port = port
+        self._dbname = database
         self._silent = silent
         self._sql = []
 
@@ -87,7 +88,8 @@ class Query(object):
         self._orphans = set()
         self._alias = None
 
-        self._database = Database(self)
+        _params = {"host": host, "port": port, "user": user, "password": password, "database": database}
+        self._database = Database(self, **_params)
 
     def _clone(self) -> "Query":
         """
@@ -99,11 +101,13 @@ class Query(object):
         # configuration and reuse without fear of internal state corruption
         """
         return type(self)(
-            vendor=self._vendor,
+            engine=self._engine,
             user=self._user,
             password=self._password,
             host=self._host,
-            silent=self._silent
+            silent=self._silent,
+            port=self._port,
+            database=self._database
         )
     
     def _conditionator(self, condition):
@@ -165,9 +169,10 @@ class Query(object):
         """
         return "".join(self._sql)
     
-    def run(self, *args, **kwargs):
-        return self.execute(*args, **kwargs)
-    
+    async def run(self, *args, **kwargs):
+        async with self._database as db:
+            return await db.executes(self)
+
     def was_called(self, command):
         return command in self._callstack
     

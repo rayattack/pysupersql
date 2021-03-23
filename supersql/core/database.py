@@ -1,17 +1,26 @@
 from asyncio import Lock
 from importlib import import_module
-from supersql.engines.sqlite import Engine
+from sys import version_info
 from types import ModuleType, TracebackType
 from typing import List, Type
 from typing import TYPE_CHECKING
 
 from supersql.core.results import Results
+from supersql.engines.postgres import Engine
 from supersql.engines.connection import IConnection, IEngine
 
-if TYPE_CHECKING:
+
+if(TYPE_CHECKING):
     from supersql.core.query import Query
 
+if version_info >= (3, 7): from contextvars import ContextVar
+else: from aiocontextvars import ContextVar
+
+
+# The base of the path to tack on dynamic importing of engine module from
 BASE = "supersql.engines."
+CTX = "connection_context"
+
 
 ENGINES = {
     "postgres": f"{BASE}postgres",
@@ -34,7 +43,7 @@ class Database(object):
     name {str}: Name of the database
     """
 
-    def __init__(self, query: 'Query'):
+    def __init__(self, query: 'Query', **kwargs):
         """
         Added here just before going to bed on 1st Feb 2021, might remove
         as this is not yet ratified. Query might be circular import?
@@ -45,38 +54,42 @@ class Database(object):
         q = Query()
         d = Database(q)
         """
-        MODULE = self.runtime_module_resolver(query._vendor)
+        MODULE = self.runtime_module_resolver(query._engine)
 
-        self.Connection: IConnection = getattr(MODULE, 'Connection')
         self.Engine: IEngine = getattr(MODULE, 'Engine')
 
-        self._engine: Engine = Engine(query)
+        self._engine: Engine = Engine(query, **kwargs)
+        self._context = ContextVar(CTX)
         self.connected: bool = False
-    
+
     async def __aenter__(self) -> 'Database':
         await self.connect()
         return self
-    
+
     async def __aexit__(self, exc_type: Type[BaseException] = None, exc_value: BaseException = None, tracebak: TracebackType = None) -> None:
         await self.disconnect()
-    
+
     async def connect(self) -> None:
         assert not self.connected, "Connected already..."
         await self._engine.connect()
         self.connected = True
-    
+
     async def disconnect(self) -> None:
         assert self.connected, "No existing connections found..."
         await self._engine.disconnect()
         self.connected = False
-    
-    async def execute(self, query: Query) -> Results:
-        async with self.connection() as connection:
-            pass
-    
-    def connection(self) -> "Connection":...
 
-    @classmethod
+    async def executes(self, query: 'Query') -> Results:
+        async with self._engine.pool.acquire() as connection:
+            results = await connection.execute(query.print())
+            print(results)
+            return results
+
+    async def execute(self, query: 'Query') -> Results:
+        async with self.connection() as connection:
+            return await connection.execute()
+
+    @staticmethod
     def runtime_module_resolver(module: str) -> ModuleType:
         try:
             return import_module(f'supersql.engines.{module}')
@@ -97,27 +110,10 @@ class Database(object):
         """
         pass
 
-
-class Connection(object):
-    def __init__(self, engine: Engine) -> None:
-        self._engine = engine
-
-        self._connectionlock = Lock()
-        self._connection = self._engine.connection()
-        self._counter = 0
-
-        self._transactionlock = Lock()
-        self._querylock = Lock()
-    
-    async def __aenter__(self) -> "Connection":
-        async with self._connectionlock:
-            self._counter += 1
-            if self._counter == 1:
-                await self._connection.begin()
-        return self
-    
-    async def __aexit__(self, exc_type: Type[BaseException] = None, exc_val: BaseException = None, traceback: TracebackType = None):
-        async with self._connectionlock:
-            self._counter -= 1
-            if self._counter == 0:
-                await self._connection.done()
+    def table(self, tablename):
+        """
+        Returns a reflection of the table schema in the database into
+        a python object that supports supersql overloaded comparators and ops
+        logic for querying.
+        """
+        pass
