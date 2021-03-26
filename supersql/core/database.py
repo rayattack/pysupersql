@@ -13,9 +13,6 @@ from supersql.engines.connection import IConnection, IEngine
 if(TYPE_CHECKING):
     from supersql.core.query import Query
 
-if version_info >= (3, 7): from contextvars import ContextVar
-else: from aiocontextvars import ContextVar
-
 
 # The base of the path to tack on dynamic importing of engine module from
 BASE = "supersql.engines."
@@ -59,7 +56,6 @@ class Database(object):
         self.Engine: IEngine = getattr(MODULE, 'Engine')
 
         self._engine: Engine = Engine(query, **kwargs)
-        self._context = ContextVar(CTX)
         self.connected: bool = False
 
     async def __aenter__(self) -> 'Database':
@@ -79,11 +75,14 @@ class Database(object):
         await self._engine.disconnect()
         self.connected = False
 
-    async def executes(self, query: 'Query') -> Results:
+    async def executes(self, query: 'Query', consequence=None, limit=None, transactions=False) -> Results:
         async with self._engine.pool.acquire() as connection:
-            results = await connection.execute(query.print())
-            print(results)
-            return results
+            if query._consequence == 'DQL':
+                return await connection.fetch(query.print())
+            elif query._consequence == 'DML':
+                return await connection.fetchval(query.print())
+            else:
+                return await connection.execute(query.print())
 
     async def execute(self, query: 'Query') -> Results:
         async with self.connection() as connection:

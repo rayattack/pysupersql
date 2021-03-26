@@ -142,7 +142,13 @@ class Base(object):
     def __le__(self, value):
         self.is_not_a_wedding_guest = False
     
-    def __lshift__(self, value):...
+    def __lshift__(self, value):
+        self.is_not_a_wedding_guest = False
+        this = self.clone()
+        this._xvalue = value
+        this.value = self.python_to_sql_value(value)
+        this._print.append(f"{this._name} = {this.value}")
+        return this
     
     def __lt__(self, value):
         self.is_not_a_wedding_guest = False
