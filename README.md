@@ -107,6 +107,3 @@ results = query.SELECT(
 
 
 &nbsp;
-
-# NOTE: Still Very Much In Development
-SuperSQL is not PRODUCTION READY until launch
