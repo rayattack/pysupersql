@@ -77,13 +77,13 @@ records = query.SELECT(
 
 &nbsp;
 
-What about support for Code First flows? Also supported using Schema objects
+What about support for Code First flows? Also supported using Table objects
 ```py
-from supersql import Schema, Varchar, Date, Smallint
+from supersql import Table, Varchar, Date, Smallint
 
-class Employee(Schema):
+class Employee(Table):
     """
-    SuperSQL is not an ORM. Schema only helps you avoid magic
+    SuperSQL is not an ORM. Table only helps you avoid magic
     literals in your code. SuperSQL is not an ORM
     """
     __pk__ = ('email', 'identifier')
@@ -111,7 +111,7 @@ results = query.SELECT(
 
 **Note**
 ---
-**Supersql is not an ORM so there is no magic Schema.save() Schema.find() features nor will they ever be supported.**
+**Supersql is not an ORM so there is no magic Table.save() Table.find() features nor will they ever be supported.**
 The `Table` class is provided only to help with magic literal elimination from your codebase i.e. a query helper and nothing more.
 
 ---
