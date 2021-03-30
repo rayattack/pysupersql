@@ -57,7 +57,7 @@ class Query(object):
     generating engine specific SQL strings.
     """
 
-    def __init__(self, engine, dsn=None, user=None, password=None, host=None, port=None, database=None, silent=True):
+    def __init__(self, engine, dsn=None, user=None, password=None, host=None, port=None, database=None, silent=True, unsafe=False):
         """Query constructor
         Sets up a query engine for use by saving initialization
         parameters internally for use in connecting to the backing
@@ -101,10 +101,17 @@ class Query(object):
         self._from = []
         self._callstack = []
 
+        self._unsafe = unsafe
+        self._args = []
+
         self._consequence = DQL  # we default to reads
         self._tablenames = set()
         self._orphans = set()
         self._alias = None
+
+        # continuation primitives
+        self._pause_cloning = False
+        self._t_ = ''  # used to determine if to put a semi-colon and space before commands
 
         _params = {"host": host, "port": port, "user": user, "password": password, "database": database}
         self._db = Database(self, **_params)
@@ -126,19 +133,27 @@ class Query(object):
             host=self._host,
             silent=self._silent,
             port=self._port,
-            database=self._database
-        )
-    
+            database=self._database,
+            unsafe=self._unsafe
+        ) if not self._pause_cloning else self
+
     def _conditionator(self, condition):
         if isinstance(condition, str):
             return f" {condition}"
         else:
             try:
-                return f" {condition.print()}"
+                # NOTE: condition here is most likely Base instance and we can get values etc out of it???? maybe???
+                # for using in $1, $2, $3 etc variable replacements
+                # we can use a dict? to save column and get values for each - sleepy so do this when brain is fresh
+                return f" {condition.print(self)}"
             except AttributeError:
                 msg = "Where clause can only process strings or column comparison operations"
                 raise ArgumentError(msg)
     
+    @property
+    def args(self):
+        return self._args
+
     @property
     def database(self) -> Database:
         """
@@ -217,6 +232,21 @@ class Query(object):
         self._alias = alias
         return self
 
+    def BEGIN(self):
+        this = self._clone()
+        this._t_ = '; '
+        this._pause_cloning = True
+        this._callstack.append('BEGIN')
+        this._sql.append('BEGIN')
+        return this
+    
+    def COMMIT(self):
+        self._pause_cloning = False
+        self._callstack.append('COMMIT')
+        self._sql.append(f'{self._t_}COMMIT;')
+        self._t_ = ''  # reset here not necessary but hey...
+        return self
+
     def DELETE(self, table):
         return self.DELETE_FROM(table)
 
@@ -229,7 +259,7 @@ class Query(object):
             tablename = table.__tn__()
         
         this._tablenames.add(tablename)
-        sqlstatement = f'DELETE FROM {tablename}'
+        sqlstatement = f'{this._t_}DELETE FROM {tablename}'
         this._sql.append(sqlstatement)
         return this
 
@@ -274,24 +304,25 @@ class Query(object):
         self._sql.extend([_FROM_, _sql])
 
         return self
-    
+
     def GROUP_BY(self, *args):
         return self
-    
+
     def INSERT_INTO(self, table: str, *args):
         this = self._clone()
         this._consequence = DML
         this._insert_args = len(args) # only available when insert into is the sql command
         this._callstack.append(INSERT_INTO_)
+        this._pause_cloning = True
 
         if isinstance(table, Table):
             t = table.__tn__()
         else:
             t = table
 
-        sql = f"{INSERT_INTO_}{t}"
-        sql = f"{sql} ({', '.join(*args)})" if len(args) > 0 else sql
-        this._sql.append(sql)
+        sql_ = f"{this._t_}{INSERT_INTO_}{t}"
+        sql_ = f"{sql_} ({', '.join(*args)})" if len(args) > 0 else sql_
+        this._sql.append(sql_)
         return this
 
     def JOIN(self, *args):
@@ -379,36 +410,39 @@ class Query(object):
                 [col for col in cols]
             )
 
-        _select_statement = f"SELECT {separator}"
+        # check if insert into is preceding this directly and not values or other command
+        # we can then prevent the insertion of `; ` in such a case as it a continuation command
+        is_inserting = len(this._callstack) > 1 and this._callstack[-2] == INSERT_INTO_
+        _select_statement = f"{' ' if is_inserting else this._t_}SELECT {separator}"
 
         # if this._pristine:
         #     this._sql.append(_select_statement)
         #     this._pristine = False
         this._sql.append(_select_statement)
         return this
-    
+
     def SET(self, *args):
         self._callstack.append('SET')
 
-        self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print() for ax in args)}')
+        self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args)}')
         return self
 
     async def SQL(self, statement: str):
         return self
 
     def UNION(self, *args):...
-    
+
     def UPDATE(self, table):
         this = self._clone()
         this._consequence = DML
         this._callstack.append(UPDATE_)
-        this._sql.append(f'{UPDATE_}{table if isinstance(table, str) else table.__tn__()} ')
+        this._sql.append(f'{this._t_}{UPDATE_}{table if isinstance(table, str) else table.__tn__()} ')
 
         return this
 
     def UPSERT(self, *args):
         return self
-    
+
     def VALUES(self, *args):
         # maybe validate len arg[args] matches the number of args provided if any in insert_into, maybe...
         self._callstack.append(VALUES_)
@@ -422,7 +456,7 @@ class Query(object):
             return f"{val}"
 
         for values in args:
-            _wparens = ', '.join(f"'{value}'" if isinstance(value, (str, bool)) else f"{value}" for value in values)
+            _wparens = ', '.join(f"'{xfy(value)}'" if isinstance(value, (str, bool)) else f"{value}" for value in values)
             sql = f"({_wparens})"
             vals.append(sql)
 
@@ -436,7 +470,7 @@ class Query(object):
         DELETE statement in play.
 
         Add WHERE constant to the pseudo call stack
-        
+
         Process the `where ` condition by checking if condition is a
             - string: add as is with spaces as necessary
             - supersql datatype comparator: calls print() to get the SQL string repr.
@@ -453,7 +487,7 @@ class Query(object):
         self._sql.append(sql_snippet)
 
         return self
-    
+
     def WITHOUT(self, *args):...
 
     def WITH_RECURSIVE(self, *args):...

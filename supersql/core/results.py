@@ -14,6 +14,8 @@ class Result(object):
 
 class Results(object):
     def __init__(self, records):
+        if not isinstance(records, list):
+            records = [SingleValueRecord(records)]
         self._rows = records
         self._copy = records[:]
 
@@ -35,6 +37,9 @@ class Results(object):
     
     def seek(self, index=0):
         self._copy = self._rows[index:]
+    
+    def __bool__(self):
+        return bool(self._rows)
 
     def __iter__(self):
         return self
@@ -51,3 +56,11 @@ class Results(object):
         if not self._copy:
             raise StopAsyncIteration
         yield Result(self._copy.pop())
+
+
+class SingleValueRecord(object):
+    def __init__(self, record):
+        self._single_value_record = record
+    
+    def get(self, key):
+        return self._single_value_record

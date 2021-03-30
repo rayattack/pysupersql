@@ -77,12 +77,12 @@ class Database(object):
 
     async def executes(self, query: 'Query', consequence=None, limit=None, transactions=False) -> Results:
         async with self._engine.pool.acquire() as connection:
-            if query._consequence == 'DQL':
-                return await connection.fetch(query.print())
-            elif query._consequence == 'DML':
-                return await connection.fetchval(query.print())
-            else:
-                return await connection.execute(query.print())
+            if query._consequence == 'DQL': method = connection.fetch
+            elif query._consequence == 'DML': method = connection.fetchval
+            else: method = connection.execute
+
+            if query._unsafe: return await method(query.print())
+            else: return await method(query.print(), *query.args)
 
     async def execute(self, query: 'Query') -> Results:
         async with self.connection() as connection:

@@ -107,3 +107,11 @@ results = query.SELECT(
 
 
 &nbsp;
+
+
+**Note**
+---
+**Supersql is not an ORM so there is no magic Schema.save() Schema.find() features nor will they ever be supported.**
+The `Table` class is provided only to help with magic literal elimination from your codebase i.e. a query helper and nothing more.
+
+---

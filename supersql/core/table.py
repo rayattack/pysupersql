@@ -57,6 +57,7 @@ class Table(object):
 
         self.fields_cache = self.__autospector__()
         self._alias = None
+        self._args = []
         # self._alias = self.__tablename__  # default alias can be overriden by client
 
     def columns(self):

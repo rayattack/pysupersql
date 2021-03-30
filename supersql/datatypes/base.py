@@ -121,13 +121,12 @@ class Base(object):
         """
         self.is_not_a_wedding_guest = False
         this = self.clone()
-        this._xvalue = value
-        this.value = self.python_to_sql_value(value)
+        this.value = value
 
         if this._imeta._alias:
-            this._print.append(f"{this._imeta._alias}.{this._name} = {this.value}")
+            this._print = f"{this._imeta._alias}.{this._name}"
         else:
-            this._print.append(f"{this._name} = {this.value}")
+            this._print = f"{this._name}"
 
         return this
 
@@ -145,9 +144,8 @@ class Base(object):
     def __lshift__(self, value):
         self.is_not_a_wedding_guest = False
         this = self.clone()
-        this._xvalue = value
-        this.value = self.python_to_sql_value(value)
-        this._print.append(f"{this._name} = {this.value}")
+        this.value = value
+        this._print = f"{this._name}"
         return this
     
     def __lt__(self, value):
@@ -173,7 +171,7 @@ class Base(object):
         this.value = self.value
         this.is_not_a_wedding_guest = self.is_not_a_wedding_guest
 
-        this._print = []
+        this._print = None
         this._name = self._name
         this._imeta = self._imeta
         this._alias = self._alias
@@ -186,9 +184,13 @@ class Base(object):
             return value
         return self.py_type(value)  # pylint: disable=no-member
 
-    def print(self) -> str:
-        return "".join(self._print)
-    
+    def print(self, query=None) -> str:
+        # check if query.unsafe and use that for $1, $2, $3 etc
+        if query and query._unsafe:
+            return f"{self._print} = {self.python_to_sql_value(self.value)}"
+        query._args.append(self.value)
+        return f"{self._print} = ${len(query._args)}"
+
     def python_to_sql_value(self, value):
         if isinstance(value, Number):
             return value
