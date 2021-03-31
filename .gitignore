@@ -11,6 +11,7 @@ sqltools_*
 scratchpad.log
 play.py
 scratchpad.py
+**/**/.DS_Store
 
 
 # sensitives
