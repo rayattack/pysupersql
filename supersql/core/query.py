@@ -1,3 +1,11 @@
+from asyncio import run
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime
+from threading import Event
+from numbers import Number
+
+from typing import Union
+
 from supersql.errors import (
     ArgumentError,
     MissingArgumentError,
@@ -8,6 +16,9 @@ from supersql.connection import connection
 
 from .database import Database
 from .table import Table
+from .results import Results
+
+_loop = None
 
 _pg = "postgres"
 _ox = "oracle"
@@ -26,6 +37,19 @@ SUPPORTED_VENDORS = {
     "sqlite": "sqlite"
 }
 
+SUPPORTED_ENGINES = (
+    "sqlite",
+    "postgres",
+    "postgresql",
+    "oracle",
+    "oracledb",
+    "mariadb",
+    "mysql",
+    "mssql",
+    "sqlserver",
+    "athena",
+    "presto"
+)
 
 
 # The underscore denotes presence of space before chars for cognitive reasons
@@ -33,7 +57,14 @@ _AND = " AND"
 DELETE = "DELETE"
 SELECT = "SELECT"
 _FROM_ = " FROM "
+INSERT_INTO_ = "INSERT INTO "
+VALUES_ = "VALUES "
+UPDATE_ = "UPDATE "
 WHERE = "WHERE"
+
+DDL = 'DDL'
+DML = 'DML'
+DQL = 'DQL'
 
 
 class Query(object):
@@ -42,10 +73,10 @@ class Query(object):
 
     A query is the work horse for supersql as it is in SQL. Queries
     can be connected to the database or isolated and used for only
-    generating vendor specific SQL strings.
+    generating engine specific SQL strings.
     """
 
-    def __init__(self, vendor, user=None, password=None, host=None, silent=True, pool=False):
+    def __init__(self, engine, dsn=None, user=None, password=None, host=None, port=None, database=None, silent=True, unsafe=False):
         """Query constructor
         Sets up a query engine for use by saving initialization
         parameters internally for use in connecting to the backing
@@ -56,7 +87,6 @@ class Query(object):
         engine {str | required}:
             The database engine i.e. postgres, oracle,
             mysql, mssql etc.
-
         user {str | optional}:
             The user to connect as
         
@@ -76,12 +106,15 @@ class Query(object):
         pool {bool | optional}:
             Should the connection be made using connection pooling or not
         """
-        if vendor not in SUPPORTED_VENDORS:
-            raise NotImplementedError(f"{vendor} is not a supersql supported engine")
-        self._vendor = vendor
+        if engine not in SUPPORTED_ENGINES:
+            raise NotImplementedError(f"{engine} is not a supersql supported engine")
+        self._engine = engine
+        self._dsn = dsn
         self._user = user
         self._password = password
         self._host = host
+        self._port = port
+        self._database = database
         self._silent = silent
         self._pool = pool
         self._sql = []
@@ -91,11 +124,22 @@ class Query(object):
         self._from = []
         self._callstack = []
 
+        self._unsafe = unsafe
+        self._args = []
+
+        self._consequence = DQL  # we default to reads
         self._tablenames = set()
         self._orphans = set()
         self._alias = None
 
-    def _clone(self):
+        # continuation primitives
+        self._pause_cloning = False
+        self._t_ = ''  # used to determine if to put a semi-colon and space before commands
+
+        _params = {"host": host, "port": port, "user": user, "password": password, "database": database}
+        self._db = Database(self, **_params)
+
+    def _clone(self) -> "Query":
         """
         # ! Why copy of Query object is returned
         # A copy of query is returned so internal query variables do not
@@ -105,28 +149,40 @@ class Query(object):
         # configuration and reuse without fear of internal state corruption
         """
         return type(self)(
-            vendor=self._vendor,
+            engine=self._engine,
+            dsn=self._dsn,
             user=self._user,
             password=self._password,
             host=self._host,
-            silent=self._silent
-        )
+            silent=self._silent,
+            port=self._port,
+            database=self._database,
+            unsafe=self._unsafe
+        ) if not self._pause_cloning else self
 
     def _conditionator(self, condition):
         if isinstance(condition, str):
             return f" {condition}"
         else:
             try:
-                return f" {condition.print()}"
+                # NOTE: condition here is most likely Base instance and we can get values etc out of it???? maybe???
+                # for using in $1, $2, $3 etc variable replacements
+                # we can use a dict? to save column and get values for each - sleepy so do this when brain is fresh
+                return f" {condition.print(self)}"
             except AttributeError:
                 msg = "Condition clause `WHERE` can only process strings or column comparison operations"
                 raise ArgumentError(msg)
+    
+    @property
+    def args(self):
+        return self._args
 
-    def database(self, name):
+    @property
+    def database(self) -> Database:
         """
-        Get the database provided by name for inspection or operation
+        Get the database for inspection or operation
         """
-        return Database()
+        return self._database
 
     def execute(self, *args, **kwargs):
         """
@@ -142,9 +198,11 @@ class Query(object):
             sent from preparation of your query. Wraps the message of the
             database server internally for easy debugging.
         """
-        return connection(self)
+        async def wait():
+            pass
+        pass
 
-    def get_tablename(self, table):
+    def get_tablename(self, table: Union[str, Table, None]) -> str:
         """
         Irrespective of the type of naming convention used i.e.
         3 part "schema.table.columnname" or 4 part "db.schema.table.columnname"
@@ -169,16 +227,12 @@ class Query(object):
             to the database server if `execute` method is called.
         """
         return "".join(self._sql)
-
-    def run(self, *args, **kwargs):
-        """
-        This works the same as execute but returns iterable results
-        that can be traversed via a cursor as opposed to fetching all results
-        into memory.
-        
-        For errors and parameter options see :func: `~supersql.core.query.Query.execute`
-        """
-        return self.execute(*args, **kwargs)
+    
+    async def run(self, *args, **kwargs) -> Results:
+        # probably want to append `;` f'{self._sql};' here?
+        async with self._db as db:
+            results = await db.executes(self)
+            return Results(results)
 
     def was_called(self, command):
         return command in self._callstack
@@ -202,23 +256,20 @@ class Query(object):
         self._alias = alias
         return self
 
-    def CREATE(self, table, safe=True):
-        """
-        Create a database bound entity table/database/extension/view etc
-        currently supports only table creation.
-
-        ..params:
-
-        table {str, Table, Database, View, Extension | required}
-
-        safe {boolean | optional}
-            Set to false to set as unsafe as raise an error if table already
-            exists and a create statement is issued otherwise 'IF NOT EXISTS' is
-            added to the create table statement.
-        """
+    def BEGIN(self):
         this = self._clone()
-        this._sql.append(table.ddl(this._vendor, safe))
+        this._t_ = '; '
+        this._pause_cloning = True
+        this._callstack.append('BEGIN')
+        this._sql.append('BEGIN')
         return this
+    
+    def COMMIT(self):
+        self._pause_cloning = False
+        self._callstack.append('COMMIT')
+        self._sql.append(f'{self._t_}COMMIT;')
+        self._t_ = ''  # reset here not necessary but hey...
+        return self
 
     def DELETE(self, table):
         return self.DELETE_FROM(table)
@@ -232,11 +283,12 @@ class Query(object):
             tablename = table.__tn__()
 
         this._tablenames.add(tablename)
-        sqlstatement = f'DELETE FROM {tablename}'
+        sqlstatement = f'{this._t_}DELETE FROM {tablename}'
         this._sql.append(sqlstatement)
         return this
 
-    def FETCH(self, *args):...
+    def FETCH(self, *args):
+        return self
 
     def FROM(self, *args, **kwargs):
         """
@@ -264,7 +316,6 @@ class Query(object):
                 _a = source._alias
                 _q = f"({source.print()})"
             elif isinstance(source, Table):
-                td = source
                 _a = source._alias
                 _q = source.__tn__()
 
@@ -278,18 +329,57 @@ class Query(object):
 
         return self
 
-    def GROUP_BY(self, *args):...
+    def GROUP_BY(self, *args):
+        return self
 
-    def INSERT(self, *args):...
+    def INSERT_INTO(self, table: str, *args):
+        this = self._clone()
+        this._consequence = DML
+        this._insert_args = len(args) # only available when insert into is the sql command
+        this._callstack.append(INSERT_INTO_)
+        this._pause_cloning = True
 
-    def JOIN(self, *args):...
+        if isinstance(table, Table):
+            t = table.__tn__()
+        else:
+            t = table
 
-    def LIMIT(self, *args):...
+        sql_ = f"{this._t_}{INSERT_INTO_}{t}"
+        sql_ = f"{sql_} ({', '.join(*args)})" if len(args) > 0 else sql_
+        this._sql.append(sql_)
+        return this
 
-    def ORDER_BY(self, *args):...
+    def JOIN(self, *args):
+        return self
+
+    def LIMIT(self, *args):
+        return self
+
+    def ORDER_BY(self, *args):
+        return self
+
+    def RETURNING(self, *args):
+        self._callstack.append('RETURNING')
+        parsed = []
+
+        for arg in args:
+            if isinstance(arg, Table):
+                col = arg.__tn__()
+            elif isinstance(arg, str):
+                col = arg
+            else: #Field Object
+                col = arg._name
+            parsed.append(col)
+
+        parsed = parsed or ['*']
+
+        sql = ", ".join(parsed)
+        self._sql.append(f' RETURNING {sql}')
+        return self
 
     def SELECT(self, *args):
         this = self._clone()
+        this._consequence = DQL
         this._callstack.append(SELECT)
 
         num_of_args = len(args)
@@ -344,7 +434,10 @@ class Query(object):
                 [col for col in cols]
             )
 
-        _select_statement = f"SELECT {separator}"
+        # check if insert into is preceding this directly and not values or other command
+        # we can then prevent the insertion of `; ` in such a case as it a continuation command
+        is_inserting = len(this._callstack) > 1 and this._callstack[-2] == INSERT_INTO_
+        _select_statement = f"{' ' if is_inserting else this._t_}SELECT {separator}"
 
         # if this._pristine:
         #     this._sql.append(_select_statement)
@@ -352,11 +445,48 @@ class Query(object):
         this._sql.append(_select_statement)
         return this
 
+    def SET(self, *args):
+        self._callstack.append('SET')
+
+        self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args)}')
+        return self
+
+    async def SQL(self, statement: str):
+        return self
+
     def UNION(self, *args):...
 
-    def UPDATE(self, *args):...
+    def UPDATE(self, table):
+        this = self._clone()
+        this._consequence = DML
+        this._callstack.append(UPDATE_)
+        this._sql.append(f'{this._t_}{UPDATE_}{table if isinstance(table, str) else table.__tn__()} ')
 
-    def UPSERT(self, *args):...
+        return this
+
+    def UPSERT(self, *args):
+        return self
+
+    def VALUES(self, *args):
+        # maybe validate len arg[args] matches the number of args provided if any in insert_into, maybe...
+        self._callstack.append(VALUES_)
+        vals = []
+
+        def xfy(val):
+            """Make vale sql friendly i.e. convert dates, booleans etc to sql types"""
+            if isinstance(val, str): val = val.replace("'", "''") # should we escape single quotes by default
+            elif isinstance(val, bool): val = 'true' if val else 'false'
+
+            return f"{val}"
+
+        for values in args:
+            _wparens = ', '.join(f"'{xfy(value)}'" if isinstance(value, (str, bool)) else f"{value}" for value in values)
+            sql = f"({_wparens})"
+            vals.append(sql)
+
+        sql = f" {VALUES_}{', '.join(vals)}"
+        self._sql.append(sql)
+        return self
 
     def WHERE(self, condition):
         """
@@ -364,12 +494,13 @@ class Query(object):
         DELETE statement in play.
 
         Add WHERE constant to the pseudo call stack
-        
+
         Process the `where ` condition by checking if condition is a
             - string: add as is with spaces as necessary
             - supersql datatype comparator: calls print() to get the SQL string repr.
         """
-        if _FROM_ not in self._callstack:
+        if UPDATE_ in self._callstack: pass
+        elif _FROM_ not in self._callstack:
             if DELETE not in self._callstack:
                 tablenames = self._tablenames
                 self = self.FROM(*tablenames)

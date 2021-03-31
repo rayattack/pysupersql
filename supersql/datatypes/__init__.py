@@ -6,5 +6,5 @@ from supersql.datatypes.numeric import (
     Money,
 )
 
-from supersql.datatypes.string import String
-from supersql.datatypes.uuid import UUID
+from supersql.datatypes.string import String, Varchar
+from supersql.datatypes.boolean import Boolean

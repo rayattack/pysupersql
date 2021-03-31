@@ -1,9 +1,0 @@
-
-
-
-class Integer(Number):
-    def __init__(self, *args, **kwargs): ...
-
-    def __set__(self, instance, value): ...
-
-    def __get__(self, instance, metadata): ...

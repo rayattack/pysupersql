@@ -1,9 +1,15 @@
-# Made For Humans
-Supersql is a `very thin wrapper` on top of SQL that enables you write SQL code with python.
+# Supersql : Made For Humans
+In the process of building a SaaS product we investigated database tools for python and found amazing ones
+like SQLAlchemy, PeeWee etc. However if you are like us your thought process might be:
 
-- Take the full power of python to SQL
-- Create advanced queries i.e. `Recursive Queries, Joins, Functions, Triggers, DDL` etc.
-- Use different SQL dialects `(Athena, Postgres, MySQL, MariaDB, Oracle, MSSQL, SQLite etc.)`
+1. But we don't want to use an ORM
+
+2. Why can't we get a low level pythonic, powerful SQL API with with semantic interaction primitives
+
+3. Async and Sync support should be supported
+
+Supersql checks all those boxes and more. It is a python superset of SQL - allowing you leverage the full power of python to
+write advanced SQL queries.
 
 
 ## Query Quickstart

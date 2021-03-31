@@ -1,9 +1,20 @@
 from datetime import datetime as clock
 from numbers import Number
+from typing import TypedDict
 
 from supersql.errors import ArgumentError
 
 from supersql.constants import COUNTERPARTS
+
+
+class BaseConstructorArgs(TypedDict):
+    pk: str
+    required: bool
+    default: str
+    unique: bool
+    textsearch: bool
+    options: dict
+    value: str
 
 
 class Base(object):
@@ -51,7 +62,7 @@ class Base(object):
     like it's SQL counterpart i.e. LIKE
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs: BaseConstructorArgs):
         self.pk = kwargs.get("pk")
         self.required = kwargs.get("required")
         self.default = kwargs.get("default")
@@ -115,13 +126,12 @@ class Base(object):
         """
         self.is_not_a_wedding_guest = False
         this = self.clone()
-        this._xvalue = value
-        this.value = self.python_to_sql_value(value)
+        this.value = value
 
         if this._imeta._alias:
-            this._print.append(f"{this._imeta._alias}.{this._name} = {this.value}")
+            this._print = f"{this._imeta._alias}.{this._name}"
         else:
-            this._print.append(f"{this._name} = {this.value}")
+            this._print = f"{this._name}"
 
         return this
 
@@ -136,7 +146,12 @@ class Base(object):
     def __le__(self, value):
         self.is_not_a_wedding_guest = False
     
-    def __lshift__(self, value):...
+    def __lshift__(self, value):
+        self.is_not_a_wedding_guest = False
+        this = self.clone()
+        this.value = value
+        this._print = f"{this._name}"
+        return this
     
     def __lt__(self, value):
         self.is_not_a_wedding_guest = False
@@ -161,7 +176,7 @@ class Base(object):
         this.value = self.value
         this.is_not_a_wedding_guest = self.is_not_a_wedding_guest
 
-        this._print = []
+        this._print = None
         this._name = self._name
         this._imeta = self._imeta
         this._alias = self._alias
@@ -186,22 +201,12 @@ class Base(object):
             return value
         return self.py_type(value)  # pylint: disable=no-member
 
-    def ddl(self, vendor):
-        """Returns a DDL snippet for this object"""
-        supersql_type = type(self).__name__.lower()
-        sql_counterpart = COUNTERPARTS.get(vendor).get(supersql_type)
-
-        has_pk = ' PRIMARY KEY' if self.pk else ''
-        nullable = ' NOT NULL' if self.required else ''
-        default = f' DEFAULT {self.default}' if self.default else ''
-
-        return f"{self._name} {sql_counterpart}{self.precision}{has_pk}{nullable}{default}"
-    
-    @property
-    def precision(self):return ''
-
-    def print(self) -> str:
-        return "".join(self._print)
+    def print(self, query=None) -> str:
+        # check if query.unsafe and use that for $1, $2, $3 etc
+        if query and query._unsafe:
+            return f"{self._print} = {self.python_to_sql_value(self.value)}"
+        query._args.append(self.value)
+        return f"{self._print} = ${len(query._args)}"
 
     def python_to_sql_value(self, value):
         """

@@ -5,7 +5,7 @@ envssql
 
 dist/
 examples/javoid/
-examples/**
+examples/*
 
 # editor files
 .vscode/
@@ -16,6 +16,7 @@ sqltools_*
 scratchpad.log
 play.py
 scratchpad.py
+**/**/.DS_Store
 
 
 # sensitives

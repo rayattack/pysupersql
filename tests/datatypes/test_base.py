@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from supersql import Table
+from supersql import Query, Table
 from supersql.datatypes.base import Base
 
 
@@ -19,11 +19,11 @@ class T(TestCase):
         base = Base()
         o = h.first_name == 24
         self.assertIsInstance(o, Base)
-        self.assertEqual(sql, o.print())
+        self.assertEqual(sql, o.print(Query("postgres", unsafe=True)))
 
     def test_index(self):
         h = Holder()
-        self.assertTrue(h.first_name._timestamp < h.last_name._timestamp)
+        self.assertTrue(h.first_name._timestamp <= h.last_name._timestamp)
     
     def test_alias(self):
         h = Holder()
