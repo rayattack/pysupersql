@@ -1,16 +1,23 @@
 from routerling import Router, HttpRequest, ResponseWriter, Context
 
 from ujson import dumps, loads
-from supersql import Query
+from supersql import Query, Table, String
 
 
 query = Query('postgres', user="postgres", password="eldorad0", database="supersql")
 router = Router()
 
 
+class Customer(Table):
+    name = String()
+
+
 async def selector(r, w, c):
-    results = await query.SELECT().FROM('customers').WHERE("name = 'Kiki'").run()
+    customer = Customer()
+    results = await query.SELECT().FROM('customers').WHERE(customer.name == 'Kiki').run()
+    if not (bool(results)): w.status = 404; return
     row = results.row(1)
+    print(len(results._rows))
     w.body = f"{row.column('name')}, {row.title}"
 
 async def editor(r: HttpRequest, w: ResponseWriter, c: Context):

@@ -1,7 +1,7 @@
 from unittest import TestCase, skip
 
 from supersql import Query, Table
-from supersql import String
+from supersql import String, Integer
 from supersql.errors import MissingArgumentError
 
 from supersql.core.query import SUPPORTED_ENGINES
@@ -10,7 +10,7 @@ from supersql.core.query import SELECT
 
 NAME = "GOD is great"
 
-SELECT_STATEMENT = "SELECT play.name, play.cryptic_name, play.more_cryptic, chess.name"
+SELECT_STATEMENT = "SELECT play.age, play.name, play.cryptic_name, play.more_cryptic, chess.name"
 FROM = "FROM play AS play"
 _CHESS = ", chess AS chess"
 WHERE = f"WHERE chess.name = '{NAME}'"
@@ -19,6 +19,7 @@ INSERT_STATEMENT = "INSERT INTO wasabis (age, title) VALUES (1, 'Baby'), (34, 'C
 
 
 class Play(Table):
+    age = Integer()
     name = String()
     cryptic_name = String()
     more_cryptic = String()
@@ -143,7 +144,7 @@ class T(TestCase):
         self.assertEqual(sql, prep.print())
 
     def test_print_all_table_cols(self):
-        sql = "SELECT play.name, play.cryptic_name, play.more_cryptic, chess.name"
+        sql = "SELECT play.age, play.name, play.cryptic_name, play.more_cryptic, chess.name"
         empty = ""
         play = Play()
         c = Chess()
@@ -157,16 +158,52 @@ class T(TestCase):
 
     def test_Update(self):
         # Validate query? Later...
-        q = self.q.UPDATE('customers').SET('age = 34').WHERE(self.p.cryptic_name << 5)
-        self.assertEqual(q.print(), "UPDATE customers SET age = 34 WHERE cryptic_name = 5")
+        q = self.q.UPDATE('customers').SET(self.p.age << 34).WHERE(self.p.cryptic_name == 5)
+        self.assertEqual(q.print(), "UPDATE customers SET age = $1 WHERE cryptic_name = $2")
+        self.assertEqual(q._args, [34, 5])
         
         q = self.q.UPDATE(self.p).SET(self.p.name << 'Yimu')
-        self.assertEqual(q.print(), "UPDATE play SET name = 'Yimu'")
+        self.assertEqual(q.print(), "UPDATE play SET name = $1")
+        self.assertEqual(q.args, ['Yimu'])
 
     def test_where(self):
         play = Play()
         c = Chess()
-        prep = self.q.SELECT(play, c.name).FROM(play, c).WHERE(
+        q = Query("postgres", unsafe=True)
+        prep = q.SELECT(play, c.name).FROM(play, c).WHERE(
             c.name == NAME
         )
         self.assertEqual(f"{SELECT_STATEMENT} {FROM}{_CHESS} {WHERE}", prep.print())
+    
+    def test_query_into(self):
+        q = self.q.INSERT_INTO('customers', ('a', 'b', 'c')).SELECT('x', 'y', 'z').FROM('extra')
+        q = q.WHERE('x = 5')
+        sql = "INSERT INTO customers (a, b, c) SELECT x, y, z FROM extra WHERE x = 5"
+        self.assertEqual(q.print(), sql)
+    
+    def test_query_begin(self):
+        q = self.q.BEGIN()
+        sql = 'BEGIN'
+        self.assertEqual(q.print(), sql)
+        self.assertTrue(q._pause_cloning, True)
+
+        q.INSERT_INTO('accounts', ('email', 'password',))
+        sql = f'{sql}; INSERT INTO accounts (email, password)'
+        self.assertEqual(q.print(), sql)
+
+        q.SELECT('a', 'b', 'c').FROM('customers')
+        sql = f'{sql} SELECT a, b, c FROM customers'
+        self.assertEqual(q.print(), sql)
+
+        q.COMMIT()
+        self.assertEqual(q.print(), f'{sql}; COMMIT;')
+
+        # now do it again but without insert_into preceeding select to ensure semicolon is seen
+        q = self.q.BEGIN()
+        sql = "BEGIN; UPDATE customers SET a = 5, b = 8 WHERE id = 't'"
+        q.UPDATE('customers').SET('a = 5', 'b = 8').WHERE("id = 't'")
+        self.assertEqual(q.print(), sql)
+
+        q = q.SELECT().FROM('wasabis').WHERE('id = 100').RETURNING('id').COMMIT()
+        sql = f'{sql}; SELECT * FROM wasabis WHERE id = 100 RETURNING id; COMMIT;'
+        self.assertEqual(q.print(), sql)
