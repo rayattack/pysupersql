@@ -3,7 +3,7 @@ from importlib import import_module
 from sys import version_info
 from types import ModuleType, TracebackType
 from typing import List, Type
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from supersql.core.results import Results
 from supersql.engines.postgres import Engine
@@ -84,9 +84,9 @@ class Database(object):
             if query._unsafe: return await method(query.print())
             else: return await method(query.print(), *query.args)
 
-    async def execute(self, query: 'Query') -> Results:
-        async with self.connection() as connection:
-            return await connection.execute()
+    async def raw(self, sql: str) -> Results:
+        async with self._engine.pool.acquire() as connection:
+            return await connection.execute(sql)
 
     @staticmethod
     def runtime_module_resolver(module: str) -> ModuleType:
