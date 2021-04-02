@@ -1,16 +1,31 @@
+# installed libs
 from routerling import Router, HttpRequest, ResponseWriter, Context
-
 from ujson import dumps, loads
+
+# internal modules
 from supersql import Query, Table, String
 
 
-query = Query('postgres', user="postgres", password="eldorad0", database="supersql")
+query = Query('postgres', user="postgres", password="eldorad0", database="postgres")
 router = Router()
 
 
 class Customer(Table):
     name = String()
 
+
+async def initialize(r, w, c):
+    results = await query.sql("""
+        BEGIN;
+
+        CREATE TABLE otherworldly (
+            email varchar(75) PRIMARY KEY NOT NULL,
+            description text
+        );
+
+        COMMIT;
+    """)
+    w.body = results
 
 async def selector(r, w, c):
     customer = Customer()
@@ -36,3 +51,4 @@ async def creator(r: HttpRequest, w: ResponseWriter, c: Context):
 router.GET('/v1/customers', selector)
 router.PUT('/v1/customers', editor)
 router.POST('/v1/customers', creator)
+router.POST('/v1/deletesss', initialize)

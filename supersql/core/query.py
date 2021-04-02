@@ -211,9 +211,14 @@ class Query(object):
             results = await db.executes(self)
             return Results(results)
 
+    async def sql(self, statement: str):
+        async with self._db as db:
+            results = await db.raw(statement)
+            return results
+
     def was_called(self, command):
         return command in self._callstack
-    
+
     def warn(self, command):
         if self._callstack[-1] == command:
             msg = f'Invalid Query Chaining: repeated {command} more than once'
@@ -425,9 +430,6 @@ class Query(object):
         self._callstack.append('SET')
 
         self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args)}')
-        return self
-
-    async def SQL(self, statement: str):
         return self
 
     def UNION(self, *args):...
