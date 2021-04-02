@@ -12,7 +12,6 @@ from supersql.errors import (
     MissingCommandError,
     DatabaseError
 )
-from supersql.connection import connection
 
 from .database import Database
 from .table import Table
@@ -20,22 +19,6 @@ from .results import Results
 
 _loop = None
 
-_pg = "postgres"
-_ox = "oracle"
-_my = "mysql"
-_ms = "mssql"
-
-SUPPORTED_VENDORS = {
-    "postgres": _pg,
-    "postgresql": _pg,
-    "oracle": _ox,
-    "oracledb": _ox,
-    "mariadb": _my,
-    "mysql": _my,
-    "mssql": _ms,
-    "sqlserver": _ms,
-    "sqlite": "sqlite"
-}
 
 SUPPORTED_ENGINES = (
     "sqlite",
@@ -51,8 +34,6 @@ SUPPORTED_ENGINES = (
     "presto"
 )
 
-
-# The underscore denotes presence of space before chars for cognitive reasons
 _AND = " AND"
 DELETE = "DELETE"
 SELECT = "SELECT"
@@ -102,9 +83,6 @@ class Query(object):
             supersql check for an error in your prepared query before even
             sending it out to the database engine?
             Defaults to `True` i.e. do not check for errors
-        
-        pool {bool | optional}:
-            Should the connection be made using connection pooling or not
         """
         if engine not in SUPPORTED_ENGINES:
             raise NotImplementedError(f"{engine} is not a supersql supported engine")
@@ -116,7 +94,6 @@ class Query(object):
         self._port = port
         self._database = database
         self._silent = silent
-        self._pool = pool
         self._sql = []
 
         self._pristine = True
@@ -170,7 +147,7 @@ class Query(object):
                 # we can use a dict? to save column and get values for each - sleepy so do this when brain is fresh
                 return f" {condition.print(self)}"
             except AttributeError:
-                msg = "Condition clause `WHERE` can only process strings or column comparison operations"
+                msg = "Where clause can only process strings or column comparison operations"
                 raise ArgumentError(msg)
     
     @property
@@ -218,7 +195,7 @@ class Query(object):
         else:
             column = table
             return column._imeta.__tn__()
-
+    
     def print(self):
         """
         Prints the current SQL statement as it exists on the query object
@@ -236,12 +213,12 @@ class Query(object):
 
     def was_called(self, command):
         return command in self._callstack
-
+    
     def warn(self, command):
         if self._callstack[-1] == command:
             msg = f'Invalid Query Chaining: repeated {command} more than once'
             raise SQLError(msg)
-
+    
     def AND(self, condition):
         self._sql.append(_AND)
         sql_snippet = self._conditionator(condition)
@@ -250,7 +227,6 @@ class Query(object):
 
     def AS(self, alias):
         """
-        # ? Revisit this docstring to make the op for this method clearer and more understandable
         If select was last called then use this as the alias for select
         """
         self._alias = alias
@@ -281,7 +257,7 @@ class Query(object):
             tablename = table
         elif isinstance(table, Table):
             tablename = table.__tn__()
-
+        
         this._tablenames.add(tablename)
         sqlstatement = f'{this._t_}DELETE FROM {tablename}'
         this._sql.append(sqlstatement)

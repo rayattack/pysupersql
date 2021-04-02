@@ -1,9 +1,13 @@
 
 from supersql.datatypes.numeric import (
-	Number,
+    Bigint,
     Decimal,
+    Double,
     Integer,
     Money,
+    Real,
+    Serial,
+    Smallint,
 )
 
 from supersql.datatypes.string import String, Varchar

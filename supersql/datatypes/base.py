@@ -4,8 +4,6 @@ from typing import TypedDict
 
 from supersql.errors import ArgumentError
 
-from supersql.constants import COUNTERPARTS
-
 
 class BaseConstructorArgs(TypedDict):
     pk: str
@@ -69,9 +67,6 @@ class Base(object):
         self.unique = kwargs.get("unique")
         self.textsearch = kwargs.get("textsearch")
         self.options = kwargs.get("options")
-
-        self.arguments = args
-
         self.value = None
         self.is_not_a_wedding_guest = True
 
@@ -183,18 +178,6 @@ class Base(object):
         this._timestamp = self._timestamp
         return this
 
-    @property
-    def constraints(self):
-        """
-        Look at the args and keyword args and use the vendor selected
-        to generate the right constraints.
-
-        Possible constraints can come from:
-            - args[0..n] like 25 signifying that the maximum length of varchar should be this number
-            - kwarg['default'] i.e. the default value to be used for a thing
-        """
-        pass
-
     def cast(self, instance, value):
         self.validate(value, instance)
         if isinstance(value, self.py_type):  # pylint: disable=no-member
@@ -209,14 +192,6 @@ class Base(object):
         return f"{self._print} = ${len(query._args)}"
 
     def python_to_sql_value(self, value):
-        """
-        Converts a python value to the closest matching SQL counterpart
-
-        ..params:
-
-        value {any | required}:
-            The py value to be coerced into an sql value
-        """
         if isinstance(value, Number):
             return value
         elif isinstance(value, str):
