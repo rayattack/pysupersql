@@ -3,7 +3,7 @@ from importlib import import_module
 from sys import version_info
 from types import ModuleType, TracebackType
 from typing import List, Type
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from supersql.core.results import Results
 from supersql.engines.postgres import Engine
