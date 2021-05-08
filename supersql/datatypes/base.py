@@ -184,7 +184,7 @@ class Base(object):
             return value
         return self.py_type(value)  # pylint: disable=no-member
 
-    def print(self, query=None) -> str:
+    def print(self, query=None):
         # check if query.unsafe and use that for $1, $2, $3 etc
         if query and query._unsafe:
             return f"{self._print} = {self.python_to_sql_value(self.value)}"
