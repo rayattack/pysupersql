@@ -10,5 +10,7 @@ from supersql.datatypes.numeric import (
     Smallint,
 )
 
-from supersql.datatypes.string import String, Varchar
+
 from supersql.datatypes.boolean import Boolean
+from supersql.datatypes.field import Field
+from supersql.datatypes.string import String, Varchar
