@@ -10,8 +10,9 @@ def ddl(instance):
     pass
 
 
-def traverser():
+def traverser(*arguments):
     count = len(arguments)
 
     for param in arguments:
-        if isinstance(param)
+        if isinstance(param, (PK, PRIMARY_KEY)):
+             pass

@@ -31,7 +31,7 @@ class Function(object):
 
     def __getattr__(self, name):
         if name == "_function_library":
-            return super.__getattr__(name)
+            return object.__getattribute__(self, name)
 
         else:
             if name not in self._function_library:

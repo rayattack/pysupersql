@@ -36,7 +36,7 @@ class Number(Base):
         self.required = kwargs.get("required")
         self.pk = kwargs.get("pk")
         self.coerce = kwargs.get("coerce", False)
-        super(Number, self).__init__(self, *args, **kwargs)
+        super(Number, self).__init__(*args, **kwargs)
 
     def validate(self, value, instance=None):
         """

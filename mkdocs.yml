@@ -18,18 +18,22 @@ theme:
 
 plugins:
   - search
-  - minify:
-      minify_html: true
 
 nav:
   - Welcome To Supersql: index.md
+  - Installation & Setup:
+      - Getting Started: installation.md
+      - Vendor Dependencies: vendor-dependencies.md
+      - Connecting to Databases: connecting.md
   - Create Database Tables in Python: tables.md
   - Query Data From Database: query.md
+  - SELECT Queries: select.md
   - View and Use Query Results: results.md
   - SQL Command Reference:
       - Function: postgres/functions.md
   - Database Discovery: database.md
   - Examples:
+    - Overview: examples.md
     - BETWEEN: examples/between.md
     - CAST: examples/cast.md
     - CONCAT Alias: examples/concat-alias.md
@@ -42,10 +46,12 @@ nav:
     - Function: examples/function.md
     - GROUP BY: examples/group-by.md
     - IN Select: examples/in-select.md
+    - INSERT: examples/insert.md
     - JOIN: examples/join.md
     - NULL: examples/null.md
     - QUERY: examples/query.md
     - Results: examples/results.md
+    - SELECT: examples/select.md
     - Unary: examples/unary.md
     - UNION: examples/union.md
     - UPDATE: examples/update.md
@@ -54,6 +60,12 @@ nav:
     - WITH RECURSIVE: examples/with-recursive.md
     - WITH: examples/with.md
     - Without Query Object: examples/without-query.md
+  - Advanced Topics:
+    - Joins: joins.md
+    - Filtering: filter.md
+    - DDL Operations: ddl/create.md
+    - DQL Operations: dql/select.md
+    - Commits: commit.md
   - Plugins &amp; Extensions: extensions.md
 
 
@@ -75,8 +87,7 @@ markdown_extensions:
   - pymdownx.caret
   - pymdownx.critic
   - pymdownx.details
-  - pymdownx.emoji:
-      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+  - pymdownx.emoji
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.magiclink:

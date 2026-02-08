@@ -2,6 +2,7 @@
 from supersql.datatypes.base import Base
 
 from supersql.errors import ValidationError
+from supersql.datatypes.base import Collection
 
 
 class MapSchema(Collection):

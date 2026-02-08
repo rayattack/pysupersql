@@ -1,66 +1,86 @@
-from typing import Any
+from typing import Any, List, Optional, Union, Iterator, AsyncIterator
 
 
 class Result(object):
-    def __init__(self, record):
+    def __init__(self, record: Any, schema: Any = None):
         self.__ = record
+        self._schema = schema
+        
+        # Validate immediately if schema is present
+        if self._schema:
+            try:
+                from .schema import Schema
+                if isinstance(self._schema, type) and issubclass(self._schema, Schema):
+                    # Use the Schema's internal validator (which has the registration)
+                    self._schema(self.__).validate()
+                elif hasattr(self._schema, 'validate'):
+                     from pytastic import Pytastic
+                     vx = Pytastic()
+                     vx.validate(self._schema, self.__)
+            except Exception as e: raise e
 
-    def column(self, col: str):
+    def column(self, col: str) -> Any:
         return self.__.get(col)
     
-    def __getattr__(self, column):
-        return self.__.get(column)
+    def __getattr__(self, column: str) -> Any:
+        try: return self.__.get(column)
+        except AttributeError:
+             raise AttributeError(f"Result has no column '{column}'")
+
+    def __getitem__(self, key: str) -> Any:
+        return self.__.get(key)
+
+    def __repr__(self):
+        return f"<Result {self.__}>"
 
 
 class Results(object):
-    def __init__(self, records):
-        if not isinstance(records, list):
-            records = [SingleValueRecord(records)]
-        self._rows = records
-        self._copy = records[:]
+    def __init__(self, records: Union[List[Any], Any], schema: Any = None):
+        # defined below, but python scoping allows this if class is defined in module
+        if not isinstance(records, list): records = [SingleValueRecord(records)]
+        self._rows: List[Any] = records
+        self._copy: List[Any] = records[:]
+        self._schema = schema
 
     def cell(self, row: int, col: str) -> Any:
         row -= 1
-        row = self._rows[row] # yes we overwrote the variable i.e converted it from num to a row
-        return row.get(col)
+        record = self._rows[row] 
+        return record.get(col)
 
-    def row(self, row: int):
+    def row(self, row: int) -> Result:
         row -= 1
-        return Result(self._rows[row])
+        return Result(self._rows[row], schema=self._schema)
     
-    def column(self, name: str, limit: int = None):
-        """Get all the values in this column and limit it to `limit` provided"""
+    def column(self, name: str, limit: Optional[int] = None) -> None:
         pass
 
-    def rows(self, limit: int = None):
-        return Results(self._rows[:limit])
+    def rows(self, limit: Optional[int] = None) -> 'Results':
+        return Results(self._rows[:limit], schema=self._schema)
     
-    def seek(self, index=0):
+    def seek(self, index: int = 0) -> None:
         self._copy = self._rows[index:]
     
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self._rows)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Result]:
         return self
 
-    def __next__(self):
-        if not self._copy:
-            raise StopIteration
-        return Result(self._copy.pop(0))
+    def __next__(self) -> Result:
+        if not self._copy: raise StopIteration
+        return Result(self._copy.pop(0), schema=self._schema)
 
-    def __aiter__(self):
+    def __aiter__(self) -> 'Results':
         return self
 
-    def __anext__(self):
-        if not self._copy:
-            raise StopAsyncIteration
-        yield Result(self._copy.pop())
+    async def __anext__(self) -> Result:
+        if not self._copy: raise StopAsyncIteration
+        return Result(self._copy.pop(0), schema=self._schema)
 
 
 class SingleValueRecord(object):
-    def __init__(self, record):
+    def __init__(self, record: Any):
         self._single_value_record = record
-    
-    def get(self, key):
+
+    def get(self, key: Any) -> Any:
         return self._single_value_record

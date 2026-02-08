@@ -8,14 +8,14 @@ class Localcache(object):
     def __init__(self, *args, **kwargs):
         self._data = {}
 
-    def __getattribute__(self, name):
-        pass
-
     def __getitem__(self, name):
-        return self[name]
+        return self._data[name]
 
     def __setitem__(self, name, value):
         self._data[name] = value
+
+    def get(self, name, default=None):
+        return self._data.get(name, default)
 
 
 class Table(object):

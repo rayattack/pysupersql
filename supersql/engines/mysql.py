@@ -8,24 +8,22 @@ from supersql.engines.connection import IConnection, IEngine
 from supersql.utils.vendor_deps import validate_vendor_dependencies
 
 # Validate dependencies at module level
-validate_vendor_dependencies("postgres")
+validate_vendor_dependencies("mysql")
 
-# Import PostgreSQL dependencies after validation
-import asyncpg
+# Import MySQL dependencies after validation
+import aiomysql
 
-logger = logging.getLogger('supersql.engines.postgres')
+logger = logging.getLogger('supersql.engines.mysql')
 
-
-if(TYPE_CHECKING):
+if TYPE_CHECKING:
     from supersql.core.query import Query
 
 CONNECTED_MESSAGE = "A connection already exists"
-DISCONNECTED_MESSAGE = "Not connection found to database"
+DISCONNECTED_MESSAGE = "No connection found to database"
 
 USER, PASSWORD, HOST, PORT, DATABASE = 'user', 'password', 'host', 'port', 'database'
 
 
-# Candidate for refactoring as much of connected and disconnected if Liskov not cared for
 def connectable(f):
     if inspect.iscoroutinefunction(f):
         @wraps(f)
@@ -77,7 +75,7 @@ class Engine(IEngine):
 
     async def connect(self) -> None:
         assert self.pool is None, CONNECTED_MESSAGE
-        logger.debug("Creating PostgreSQL connection pool")
+        logger.debug("Creating MySQL connection pool")
         
         # Extract pool arguments
         pool_min_size = self._config.get('pool_min_size', 10)
@@ -88,37 +86,38 @@ class Engine(IEngine):
         # Prepare connection arguments (exclude pool args)
         connect_kwargs = {k: v for k, v in self._config.items() if not k.startswith('pool_')}
         
-        # asyncpg uses min_size, max_size, timeout, max_inactive_connection_lifetime
+        # aiomysql uses minsize, maxsize, pool_recycle, connect_timeout
         pool_kwargs = {
-            'min_size': pool_min_size,
-            'max_size': pool_max_size,
-            'timeout': pool_timeout,
+            'minsize': pool_min_size,
+            'maxsize': pool_max_size,
+            'connect_timeout': pool_timeout,
         }
         
         if pool_recycle > 0:
-            pool_kwargs['max_inactive_connection_lifetime'] = pool_recycle
+            pool_kwargs['pool_recycle'] = pool_recycle
 
         try:
-            self.pool = await asyncpg.create_pool(**connect_kwargs, **pool_kwargs)
-            logger.debug("PostgreSQL connection pool created successfully")
+            self.pool = await aiomysql.create_pool(**connect_kwargs, **pool_kwargs)
+            logger.debug("MySQL connection pool created successfully")
         except Exception as e:
-            logger.error(f"Failed to create PostgreSQL connection pool: {e}")
+            logger.error(f"Failed to create MySQL connection pool: {e}")
             raise
 
     async def disconnect(self) -> None:
         assert self.pool is not None, DISCONNECTED_MESSAGE
-        logger.debug("Closing PostgreSQL connection pool")
+        logger.debug("Closing MySQL connection pool")
         try:
-            await self.pool.close()
+            self.pool.close()
+            await self.pool.wait_closed()
             self.pool = None
-            logger.debug("PostgreSQL connection pool closed")
+            logger.debug("MySQL connection pool closed")
         except Exception as e:
-            logger.error(f"Failed to close PostgreSQL connection pool: {e}")
+            logger.error(f"Failed to close MySQL connection pool: {e}")
             raise
-
+    
     @property
     def parameter_placeholder(self) -> str:
-        return "$%d"
+        return "%s"
 
     def connection(self) -> "Connection":
         return Connection(self.pool)
@@ -129,12 +128,48 @@ class Connection(IConnection):
         self._pool = pool
         self._connection = None
 
-    @disconnectable
-    async def begin(self):
-        self._connection = await self._pool.acquire()
-        return self._connection
-
     @connectable
-    async def done(self):
+    async def begin(self) -> None:
+        self._connection = await self._pool.acquire()
+
+    @disconnectable
+    async def done(self) -> None:
         await self._pool.release(self._connection)
         self._connection = None
+
+    @disconnectable
+    async def execute(self, query: 'Query') -> typing.Any:
+        async with self._connection.cursor() as cursor:
+            await cursor.execute(query.print(), query.args)
+            return cursor.rowcount
+
+    @disconnectable
+    async def executemany(self, queries: typing.List['Query']) -> typing.Any:
+        async with self._connection.cursor() as cursor:
+            for query in queries:
+                await cursor.execute(query.print(), query.args)
+            return cursor.rowcount
+
+    @disconnectable
+    async def fetchall(self, query: "Query") -> typing.List[typing.Mapping]:
+        async with self._connection.cursor(aiomysql.DictCursor) as cursor:
+            await cursor.execute(query.print(), query.args)
+            results = await cursor.fetchall()
+            return results
+
+    @disconnectable
+    async def fetchmany(self, limit: int) -> typing.Any:
+        # Implementation would depend on how the query is stored
+        pass
+
+    @disconnectable
+    async def release(self) -> None:
+        if self._connection:
+            await self._pool.release(self._connection)
+            self._connection = None
+
+    @disconnectable
+    async def rowcount(self, query: 'Query') -> int:
+        async with self._connection.cursor() as cursor:
+            await cursor.execute(query.print(), query.args)
+            return cursor.rowcount

@@ -1,91 +1,120 @@
-# What is a Query?
+# Query API Reference
 
-At the heart of it SuperSQL can simply be viewed as a query generator and database
-connection proxy. It provides a highl level *__Query__* object and all interactions
-with databases happen via this object.
+The `Query` class is the core of SuperSQL. It provides a fluent interface for building and executing SQL queries across multiple database vendors.
 
-!!!info "Available High Level Imports"
-    There are only 2 imports you will ever need to make no matter no matter how
-    your query needs are, and this correspond to the only high level imports made
-    available by the library.
+## Core Imports
 
-```py
-from supersql import Query
-from supersdql import Table
-
+```python
+from supersql import Query, Table
+from supersql import String, Integer, Date, UUID  # Data types
+from supersql.errors import VendorDependencyError  # Error handling
 ```
 
-For now let us focus on the `supersql.Query` object.
+## Query Object
+
+The Query object serves as both a query builder and database connection manager. All database interactions happen through Query instances.
 
 
-## Create a SuperSQL Query
+## Creating Query Objects
 
-A query object can be created as an orphan (useful in scenarios where simple SQL
-syntax generation is desired) or as a connected query (with database connection
- config).
+### Basic Query Creation
 
-
-
-!!!info "Specifying A Dialect"
-    Irrespective of the query type i.e. `orphaned` or `connected` you are advised
-    to provide an SQL dialect - i.e. the database you are targeting, as to ensure
-    the SQL generated is valid for the eventual database engine.
-
-
-### Orphan Query
-
-```py
+```python
 from supersql import Query
 
-query = Query()  # no dialect provided
-query_with_dialect = Query(dialect="postgres")
-
+# Database connection required (first parameter is engine)
+query = Query("postgres",
+              user="postgres",
+              password="password",
+              host="localhost",
+              port=5432,
+              database="mydb")
 ```
 
-An orphan Query is one with no parent database specified i.e. It is not connected
-to a database and as such can only be used to generate SQL statements. It is advisable
-to always provide a __`dialect`__ when initializing a Query so that the correct syntax can
-be targeted if you eventually decide to connect the Query to a database server.
+### Constructor Parameters
 
-Supported dialects are:
-
-- postgres
-- oracle
-- mysql `or` mariadb
-- oracle
-- athena
-- mssql
-
-
-### Connected Query
-
-```py
-from os import environ
-from supersql import Query
-
-dialect = "postgres"
-user = "postgres"
-pwd = "strong.password.here"
-db = "northwind"
-host = "localhost"
-port = 5432
-
-query = Query(
-    dialect=dialect,
-    user=user,
-    password=pwd,
-    database=db,
-    host=host
+```python
+Query(
+    engine,           # Required: Database vendor
+    dsn=None,         # Optional: Connection string
+    user=None,        # Optional: Username
+    password=None,    # Optional: Password
+    host=None,        # Optional: Host (default: localhost)
+    port=None,        # Optional: Port (vendor-specific defaults)
+    database=None,    # Optional: Database name
+    silent=True,      # Optional: Disable syntax checking
+    unsafe=False      # Optional: Allow unsafe operations
 )
-# or
-query2 = Query(dialect, user, pwd, database, host, port)
-
 ```
 
-Unlike orphaned queries, connected queries can be used to retrieve results/data from
-the database server engine.
+### Supported Database Engines
 
-To create a connected query pass in additional parameters to the Query constructor:
+| Engine | Aliases | Default Port | Dependencies |
+|--------|---------|--------------|--------------|
+| `postgres` | `postgresql` | 5432 | `asyncpg` |
+| `mysql` | `mariadb` | 3306 | `aiomysql` |
+| `mssql` | `sqlserver` | 1433 | `aioodbc`, `pyodbc` |
+| `sqlite` | - | - | `aiosqlite` |
+| `oracle` | `oracledb` | 1521 | `cx_Oracle` or `oracledb` |
+| `athena` | - | - | `PyAthena` |
+| `presto` | - | - | `presto-python-client` |
+
+!!! info "Vendor Dependencies"
+    Install vendor-specific dependencies with `pip install supersql[postgres]`.
+    See [Vendor Dependencies](vendor-dependencies.md) for details.
+
+### Environment Variables
+
+SuperSQL automatically reads these environment variables:
+
+```bash
+export SUPERSQL_DATABASE_USER=myuser
+export SUPERSQL_DATABASE_PASSWORD=mypassword
+export SUPERSQL_DATABASE_HOST=localhost
+export SUPERSQL_DATABASE_PORT=5432
+export SUPERSQL_DATABASE_NAME=mydb
+```
+
+```python
+# These will be used automatically if not provided
+query = Query("postgres")
+```
+
+### Connection Examples
+
+#### PostgreSQL
+```python
+query = Query("postgres",
+              user="postgres",
+              password="password",
+              host="localhost",
+              database="mydb")
+```
+
+#### MySQL
+```python
+query = Query("mysql",
+              user="root",
+              password="password",
+              host="localhost",
+              database="mydb")
+```
+
+#### SQL Server
+```python
+query = Query("mssql",
+              user="sa",
+              password="password",
+              host="localhost",
+              database="mydb")
+```
+
+#### SQLite
+```python
+query = Query("sqlite", database="mydb.sqlite")
+# or in-memory
+query = Query("sqlite", database=":memory:")
+```
 
 - *__dialect__*: What database dialect are you targeting. __`str`__
 - *__user__*: The database user to connect as. __`str`__
@@ -135,8 +164,7 @@ SQL commands supported as at v2019.3 includes:
 - UNION
 - UNION_ALL
 
-For a full list of supported SQL constructs with code examples take a look at the
-[SuperSQL Command Reference](#api-command-reference).
+For a full list of supported SQL constructs with code examples, see the examples section in the navigation.
 
 
 ## How Query Commands Work?

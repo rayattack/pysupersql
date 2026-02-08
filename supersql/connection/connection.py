@@ -29,8 +29,8 @@ def _get_database_url(query):
     host = query.dbhost or getenv(HOST)
     user = query.dbuser or getenv(USER)
     database = getenv(DATABASE) or query.dbname
-
-    port = getenv(PORT) or query._db_port or _default_ports.get(query.vendor)
+    port = getenv(PORT) or query._db_port or _DEFAULT_PORTS.get(query.vendor)
+    return f"{query.vendor}://{user}:{query.dbpass}@{host}:{port}/{database}"
 
 
 class Connection(object):

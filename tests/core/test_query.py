@@ -72,8 +72,10 @@ class T(TestCase):
             ).VALUES(
                 ('Marie', 'Sue', 25,)
             ).print(),
-            "INSERT INTO customers (first_name, last_name, age) VALUES ('Marie', 'Sue', 25)"
+            "INSERT INTO customers (first_name, last_name, age) VALUES ($1, $2, $3)"
         )
+        # Check parameters
+        # self.assertEqual(self.q._args, ['Marie', 'Sue', 25]) # Can't easily check _args on the fresh query unless we capture it
     
     def test_insert_multiple(self):
         self.assertEqual(
@@ -83,7 +85,7 @@ class T(TestCase):
                 (1, 'Baby',),
                 (34, 'CEO',),
                 (12, 'Student',)
-            ).print(), INSERT_STATEMENT)
+            ).print(), "INSERT INTO wasabis (age, title) VALUES ($1, $2), ($3, $4), ($5, $6)")
     
     def test_insert_into_only(self):
         self.assertEqual(
@@ -95,15 +97,24 @@ class T(TestCase):
     
     def test_insert_returning(self):
         q = self.q.INSERT_INTO('wasabis').VALUES(('Student', 17,))
-        qsql = "INSERT INTO wasabis VALUES ('Student', 17)"
+        qsql = "INSERT INTO wasabis VALUES ($1, $2)"
         self.assertEqual(q.print(), qsql)
-        self.assertEqual(q.RETURNING('*').print(), f'{qsql} RETURNING *')
-        self.assertEqual(
-            self.q.INSERT_INTO('wasabis').VALUES(
+        self.assertEqual(q._args, ['Student', 17])
+        
+        # Note: RETURNING clones the query, so we need to be careful about state
+        q_ret = q.RETURNING('*')
+        self.assertEqual(q_ret.print(), f'{qsql} RETURNING *')
+        self.assertEqual(q_ret._args, ['Student', 17])
+        
+        q_complex = self.q.INSERT_INTO('wasabis').VALUES(
                 ('Student', 17)
-            ).RETURNING(self.p.name, self.p.cryptic_name).print(),
-            "INSERT INTO wasabis VALUES ('Student', 17) RETURNING name, cryptic_name"
+            ).RETURNING(self.p.name, self.p.cryptic_name)
+            
+        self.assertEqual(
+            q_complex.print(),
+            "INSERT INTO wasabis VALUES ($1, $2) RETURNING name, cryptic_name"
         )
+        self.assertEqual(q_complex._args, ['Student', 17])
 
     def test_supported(self):
         for engine in SUPPORTED_ENGINES[:3]:
