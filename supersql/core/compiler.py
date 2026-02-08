@@ -113,7 +113,17 @@ class SQLCompiler(ABC):
         # SELECT
         selects = state.selects or ['*']
         # Convert list to string, handling objects if necessary
-        select_str = ", ".join(str(s) for s in selects)
+        select_parts = []
+        for s in selects:
+            if hasattr(s, 'compile'):
+                # Window function or other compilable object
+                sql, params = s.compile(self)
+                select_parts.append(sql)
+                parameters.extend(params)
+            else:
+                select_parts.append(str(s))
+        
+        select_str = ", ".join(select_parts)
         parts.append(f"SELECT {select_str}")
         
         # FROM
@@ -136,6 +146,15 @@ class SQLCompiler(ABC):
         if state.groups:
             group_str = ", ".join(str(g) for g in state.groups)
             parts.append(f"GROUP BY {group_str}")
+        
+        # WINDOW clause (named windows) - comes after GROUP BY, before ORDER BY
+        if state.window_definitions:
+            window_parts = []
+            for name, spec in state.window_definitions.items():
+                spec_sql, spec_params = spec.compile(self)
+                window_parts.append(f"{name} AS ({spec_sql})")
+                parameters.extend(spec_params)
+            parts.append(f"WINDOW {', '.join(window_parts)}")
             
         # ORDER BY
         if state.orders:

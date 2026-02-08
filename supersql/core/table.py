@@ -94,6 +94,20 @@ class BetweenCondition(object):
         return f"{self.field} BETWEEN {l} AND {u}"
 
 
+class OrderedField:
+    """Wrapper for a Field with ordering direction (ASC/DESC)."""
+    
+    def __init__(self, field, direction='ASC'):
+        self.field = field
+        self.direction = direction
+    
+    def __str__(self):
+        return f"{self.field} {self.direction}"
+    
+    def __repr__(self):
+        return str(self)
+
+
 class Field(object):
     def __init__(self, name, table=None):
         self.name = name
@@ -171,6 +185,14 @@ class Field(object):
 
     def AS(self, alias):
         return f"{self} AS {alias}"
+    
+    def __neg__(self):
+        """Unary minus operator for descending order in ORDER BY."""
+        return OrderedField(self, 'DESC')
+    
+    def __pos__(self):
+        """Unary plus operator for ascending order in ORDER BY."""
+        return OrderedField(self, 'ASC')
 
 
 

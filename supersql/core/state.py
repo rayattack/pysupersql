@@ -11,6 +11,9 @@ class QueryState:
     # CTEs (Common Table Expressions)
     ctes: List[Any] = field(default_factory=list)
     
+    # Window definitions (named windows)
+    window_definitions: dict = field(default_factory=dict)  # {name: WindowSpec}
+    
     # Chained statements (previous QueryStates in a chain)
     chain: List['QueryState'] = field(default_factory=list)
 

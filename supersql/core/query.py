@@ -23,6 +23,25 @@ from .table import Table
 from .results import Results
 from .state import QueryState
 from .compiler import PostgresCompiler, MySQLCompiler, SQLiteCompiler
+from .window import (
+    WindowSpec,
+    ROW_NUMBER as _ROW_NUMBER,
+    RANK as _RANK,
+    DENSE_RANK as _DENSE_RANK,
+    NTILE as _NTILE,
+    PERCENT_RANK as _PERCENT_RANK,
+    CUME_DIST as _CUME_DIST,
+    LAG as _LAG,
+    LEAD as _LEAD,
+    FIRST_VALUE as _FIRST_VALUE,
+    LAST_VALUE as _LAST_VALUE,
+    NTH_VALUE as _NTH_VALUE,
+    WindowSum,
+    WindowAvg,
+    WindowCount,
+    WindowMin,
+    WindowMax
+)
 
 logger = logging.getLogger('supersql.core.query')
 
@@ -661,6 +680,9 @@ class Query(object):
                 # Table object -> SELECT *
                 this._tablenames.add(arg.__tn__())
                 cols.append("*") 
+            elif hasattr(arg, 'compile'):
+                # Compilable object (WindowFunction, etc.)
+                cols.append(arg)
             elif hasattr(arg, 'table'):
                 # Field object
                 if arg.table:
@@ -686,10 +708,16 @@ class Query(object):
                     # For now select * from table in list
                     # Or we could expand columns if we knew them, but dynamic table doesn't know columns
                     cols.append(f"{member._alias or member._name}.*")
+                elif hasattr(member, 'compile'):
+                    # Compilable object (WindowFunction, etc.)
+                    cols.append(member)
                 elif hasattr(member, 'table'):
                     # Field object
                     if member.table:
                         this._tablenames.add(member.table.__tn__())
+                    cols.append(str(member))
+                else:
+                    # Fallback for other objects
                     cols.append(str(member))
 
         this._state.selects = cols
@@ -794,4 +822,148 @@ class Query(object):
         this = self._clone()
         this._state.ctes.append((alias, query))
         return this
+
+    # Window Function Methods
+    
+    def PARTITION_BY(self, *args):
+        """
+        Create a WindowSpec with PARTITION BY clause.
+        
+        Use negative prefix (-column) for descending order in ORDER BY.
+        
+        Args:
+            *args: Columns to partition by
+        
+        Returns:
+            WindowSpec: Window specification object
+        """
+        partition_cols = []
+        for arg in args:
+            # Handle negative for descending in ORDER BY context
+            arg_str = str(arg)
+            if arg_str.startswith('-'):
+                # Keep negative for ORDER BY processing in WindowSpec
+                partition_cols.append(arg_str)
+            else:
+                partition_cols.append(arg_str)
+        
+        return WindowSpec(partition_by=partition_cols)
+    
+    def WINDOW(self, name: str, spec: WindowSpec):
+        """
+        Define a named window specification.
+        
+        Args:
+            name: Window name
+            spec: WindowSpec object
+        
+        Returns:
+            Query: self for method chaining
+        """
+        self._state.window_definitions[name] = spec
+        return self
+    
+    # Ranking Window Functions
+    
+    def ROW_NUMBER(self):
+        """ROW_NUMBER() window function."""
+        return _ROW_NUMBER()
+    
+    def RANK(self):
+        """RANK() window function."""
+        return _RANK()
+    
+    def DENSE_RANK(self):
+        """DENSE_RANK() window function."""
+        return _DENSE_RANK()
+    
+    def NTILE(self, n: int):
+        """NTILE(n) window function."""
+        return _NTILE(n)
+    
+    def PERCENT_RANK(self):
+        """PERCENT_RANK() window function."""
+        return _PERCENT_RANK()
+    
+    def CUME_DIST(self):
+        """CUME_DIST() window function."""
+        return _CUME_DIST()
+    
+    # Value Window Functions
+    
+    def LAG(self, column, offset: int = 1, default=None):
+        """
+        LAG(column [, offset [, default]]) window function.
+        
+        Args:
+            column: Column to get previous value from
+            offset: Number of rows back (default 1)
+            default: Default value if no previous row
+        """
+        return _LAG(column, offset, default)
+    
+    def LEAD(self, column, offset: int = 1, default=None):
+        """
+        LEAD(column [, offset [, default]]) window function.
+        
+        Args:
+            column: Column to get next value from
+            offset: Number of rows forward (default 1)
+            default: Default value if no next row
+        """
+        return _LEAD(column, offset, default)
+    
+    def FIRST_VALUE(self, column):
+        """FIRST_VALUE(column) window function."""
+        return _FIRST_VALUE(column)
+    
+    def LAST_VALUE(self, column):
+        """LAST_VALUE(column) window function."""
+        return _LAST_VALUE(column)
+    
+    def NTH_VALUE(self, column, n: int):
+        """NTH_VALUE(column, n) window function."""
+        return _NTH_VALUE(column, n)
+    
+    # Aggregate Window Functions
+    
+    def SUM(self, column):
+        """
+        SUM(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowSum(column)
+    
+    def AVG(self, column):
+        """
+        AVG(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowAvg(column)
+    
+    def COUNT(self, column):
+        """
+        COUNT(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowCount(column)
+    
+    def MIN(self, column):
+        """
+        MIN(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowMin(column)
+    
+    def MAX(self, column):
+        """
+        MAX(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowMax(column)
 
