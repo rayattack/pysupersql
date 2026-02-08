@@ -1,120 +1,62 @@
-Supersql Library
-================
-There are many great database tools for python (i.e. databases, SQLAlchemy, PeeWee etc.) - **but there is no Python tool for databases.**
+# SuperSQL: SQL for Humans
 
-In addition you might have come to the same realisation and thinking the following:
+**SuperSQL** is a powerful, pythonic SQL query builder that lets you write SQL using native Python objects.
 
-1. But we don't want to use an ORM
-
-2. Why can't we get a low level pythonic, powerful SQL api with with semantic interaction primitives
-
-3. Async and Sync support should be supported
-
-Supersql checks all those boxes and more. It is a python superset of SQL - allowing you leverage the full power of python to
-write advanced SQL queries.
-
-&nbsp;
-
-**Tutorial**: [Open Documentation](https://rayattack.github.io/supersql/)
-
-**Requirements**: Python 3.6+
-
-&nbsp;
-
-
-### NOTE: Still Very Much In Development
-
-```sql
-SELECT * FROM customers ORDER BY last_name ASC LIMIT 5
-```
-
-
-```py
-# query.SELECT('*') is the same as query.SELECT() or query.SELECT(customers)
-query.SELECT().FROM(customers).ORDER_BY(-customers.last_name).LIMIT(5)
-```
-
-&nbsp;
-
-## Why?
-Let's be honest:
-
-1. Writing sql templates using string formatting is really painful.
-2. Sometimes an ORM is not what you need, and whilst the new
-`f strings` in python solve a lot of problems, complex SQL templating is not of
-them.
-
-3. Supersql makes it super simple to connect to and start querying a database in python.
-
-&nbsp;
-
-Let the code do the explanation:
-```py
-
-from supersql import Query
-
-
-query = Query('postgres://user:password@hostname:5432/database')
-
-
-# Without table schema discovery/reflection i.e. using strings -- NOT OPTIMAL
-results = query.SELECT(
-        'first_name', 'last_name', 'email'
-    ).FROM(
-        'employees'
-    ).WHERE('email = someone@example.com').execute()
-
-for result in results:
-    print(result)
-
-
-# reflect table schema and fields into a python object for easy querying
-emps = query.database.table('employees')
-
-records = query.SELECT(
-        emps.first_name, emps.last_name, emps.email
-    ).FROM(
-        emps
-    ).WHERE(emps.email == 'someone@example.com').execute()
-```
-
-&nbsp;
-
-What about support for Code First flows? Also supported using Table objects
-```py
-from supersql import Table, Varchar, Date, Smallint
-
-class Employee(Table):
-    """
-    SuperSQL is not an ORM. Table only helps you avoid magic
-    literals in your code. SuperSQL is not an ORM
-    """
-    __pk__ = ('email', 'identifier')
-
-    identifier = Varchar()
-    email = Varchar(required=True, unique=None, length=25)
-    age = Smallint()
-    first_name = String(required=True)
-    last_name = String(25)
-    created_on = Date()
-
-
-# Now lets try again
-emp = Employee()
-results = query.SELECT(
-    emp.first_name, emp.last_name, emp.email
-).FROM(emp).WHERE(
-    emp.email == 'someone@example.com'
-).execute()
-```
-
-
-&nbsp;
-
-
-**Note**
----
-**Supersql is not an ORM so there is no magic Table.save() Table.find() features nor will they ever be supported.**
-The `Table` class is provided only to help with magic literal elimination from your codebase i.e. a query helper and nothing more.
+It is **NOT an ORM**. There are no magic `.save()` methods, no hidden lazy-loading, and no confusing state management. You write explicit SQL queries (`SELECT`, `INSERT`, `UPDATE`) using a fluent Python API that looks and feels like SQL, but with the power of Python's type system and tooling.
 
 ---
+
+### Features
+
+-   **Pythonic Syntax**: Write SQL using chainable Python methods (`.SELECT().FROM().WHERE()`).
+-   **Type Safe**: Define tables using Python classes for autocomplete and validation.
+-   **Vendor Agnostic**: Support for PostgreSQL, MySQL, SQLite, Oracle, and SQL Server.
+-   **Async & Sync**: Built for modern async Python (asyncio) but supports sync execution.
+-   **No Magic**: You control the exact SQL being generated.
+-   **Pytastic Integration**: Built-in schema validation using Pytastic.
+
+---
+
+### Installation
+
+```bash
+# Install with PostgreSQL support
+pip install supersql[postgres]
+
+# Or with all drivers
+pip install supersql[postgres,mysql,sqlite]
+```
+
+### Quick Start
+
+```python
+from supersql import Query, Table
+
+# 1. Connect to your database
+query = Query("postgres", database="mydb")
+
+# 2. Define your Table (Dynamic, no class needed!)
+users = Table("users")
+
+# 3. Write Pythonic SQL
+# SELECT name, email FROM users WHERE age > 25
+results = await query.SELECT(
+    users.name, users.email
+).FROM(
+    users
+).WHERE(
+    users.age > 25
+).run()
+```
+
+### Why SuperSQL?
+
+SuperSQL gives you the power of a Query Builder without the overhead of an ORM.
+
+1.  **Zero Boilerplate**: No need to define classes or duplicate your schema in Python.
+2.  **Explicit Control**: You control the exact SQL execution.
+3.  **Dynamic**: Works great with ad-hoc queries or evolving schemas.
+
+---
+
+[Read the Documentation](https://rayattack.github.io/supersql/)

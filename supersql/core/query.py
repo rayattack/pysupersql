@@ -14,10 +14,6 @@ from supersql.errors import (
     MissingArgumentError,
     MissingCommandError,
     DatabaseError,
-    ArgumentError,
-    MissingArgumentError,
-    MissingCommandError,
-    DatabaseError,
     ProgrammingError,
     ValidationError
 )
@@ -27,6 +23,25 @@ from .table import Table
 from .results import Results
 from .state import QueryState
 from .compiler import PostgresCompiler, MySQLCompiler, SQLiteCompiler
+from .window import (
+    WindowSpec,
+    ROW_NUMBER as _ROW_NUMBER,
+    RANK as _RANK,
+    DENSE_RANK as _DENSE_RANK,
+    NTILE as _NTILE,
+    PERCENT_RANK as _PERCENT_RANK,
+    CUME_DIST as _CUME_DIST,
+    LAG as _LAG,
+    LEAD as _LEAD,
+    FIRST_VALUE as _FIRST_VALUE,
+    LAST_VALUE as _LAST_VALUE,
+    NTH_VALUE as _NTH_VALUE,
+    WindowSum,
+    WindowAvg,
+    WindowCount,
+    WindowMin,
+    WindowMax
+)
 
 logger = logging.getLogger('supersql.core.query')
 
@@ -159,7 +174,6 @@ class Query(object):
         self._silent = silent
         self._state = QueryState()
         
-        # Initialize Compiler based on engine
         if self._engine in ('postgres', 'postgresql'):
              self._compiler = PostgresCompiler()
         elif self._engine == 'mysql':
@@ -167,13 +181,10 @@ class Query(object):
         elif self._engine == 'sqlite':
              self._compiler = SQLiteCompiler()
         else:
-             # Fallback or error? For now default to Postgres or raise
-             # raise NotImplementedError(f"Compiler for {self._engine} not implemented")
-             # Use Postgres as default just to not crash, but this is dangerous
              self._compiler = PostgresCompiler() 
               
         self._pristine = True
-        self._disparity = 0  # how many tables is this query for?
+        self._disparity = 0
         self._from = []
         self._callstack = []
 
@@ -181,14 +192,13 @@ class Query(object):
 
         self._args = []
 
-        self._consequence = DQL  # we default to reads
+        self._consequence = DQL
         self._tablenames = set()
         self._orphans = set()
         self._alias = None
 
-        # continuation primitives
         self._pause_cloning = False
-        self._t_ = ''  # used to determine if to put a semi-colon and space before commands
+        self._t_ = ''
 
         _params = {
             "host": self._host, 
@@ -216,9 +226,6 @@ class Query(object):
         import re
 
         if connection_string.startswith('sqlite:'):
-             # Handle sqlite specially as it may not strictly follow user:pass@host:port format
-             # e.g supersql currently receives sqlite:///path/to/db (absolute) or sqlite://path/to/db (relative)
-             # We just take everything after sqlite:// as the database path/url
              path_match = re.match(r'^sqlite://(.*)$', connection_string)
              if path_match:
                  return {
@@ -230,7 +237,6 @@ class Query(object):
                      'password': None
                  }
 
-        # Pattern to match: engine://user:password@host:port/database
         pattern = r'^(\w+)://(?:([^:]+)(?::([^@]+))?@)?([^:/]+)(?::(\d+))?/(.+)$'
         match = re.match(pattern, connection_string)
 
@@ -239,7 +245,6 @@ class Query(object):
 
         engine, user, password, host, port, database = match.groups()
 
-        # Map postgresql to postgres for compatibility
         if engine == 'postgresql':
             engine = 'postgres'
 
@@ -252,17 +257,7 @@ class Query(object):
             'database': database
         }
 
-
-
     def _clone(self) -> "Query":
-        """
-        # ! Why copy of Query object is returned
-        # A copy of query is returned so internal query variables do not
-        # leak out to other query objects.
-        #
-        # i.e. it is possible to declare a global query object with connection
-        # configuration and reuse without fear of internal state corruption
-        """
         new_query = type(self)(
             engine=self._engine,
             dsn=self._dsn,
@@ -281,7 +276,6 @@ class Query(object):
         
         if not self._pause_cloning:
             new_query._state = copy.deepcopy(self._state)
-            # Copy other internal state if needed
             new_query._tablenames = self._tablenames.copy()
             new_query._orphans = self._orphans.copy()
             new_query._callstack = self._callstack.copy()
@@ -307,15 +301,9 @@ class Query(object):
             self._state = new_state
 
     def _conditionator(self, condition):
-        if isinstance(condition, str):
-            return f" {condition}"
-        else:
-            try:
-                return f" {condition.print(self)}"
-            except AttributeError:
-                msg = "Where clause can only process strings or column comparison operations"
-                raise ArgumentError(msg)
-    
+        # Allow Condition objects to pass through to compiler
+        return condition
+
     @property
     def args(self):
         return self._args
@@ -349,22 +337,23 @@ class Query(object):
         """
         return asyncio_run(self.run(*args, **kwargs))
 
-    def get_tablename(self, table: Union[str, Table, None]) -> str:
-        """
-        Irrespective of the type of naming convention used i.e.
-        3 part "schema.table.columnname" or 4 part "db.schema.table.columnname"
-        this method expects the second part from the right to always be 
-        table name
-        """
-        if isinstance(table, Table):
+    def get_tablename(self, table: Union[str, Table, None]) -> Optional[str]:
+        if hasattr(table, '__tn__'):
             return table.__tn__()
         elif isinstance(table, str):
+            # Extract table name from string "table.column" or "schema.table.column"
+            # Logic: last part is column, second to last is table.
             processed = table.split(".")
             parts = len(processed)
-            return None if parts < 2 else processed[-2]
+            if parts >= 2:
+                # e.g. "users.id" -> "users"
+                return processed[-2]
+            return None
         else:
-            column = table
-            return column._imeta.__tn__()
+            # Field object
+            if hasattr(table, 'table') and table.table:
+                return table.table.__tn__()
+            return None
     
     def build(self) -> str:
         """
@@ -375,8 +364,8 @@ class Query(object):
             return ""
             
         sql, params = self._compiler.compile(self._state)
-        if params:
-            self._args = params
+        # Update bound parameters
+        self._args = params
         return sql
 
     def print(self):
@@ -417,8 +406,8 @@ class Query(object):
             raise ProgrammingError(msg)
     
     def AND(self, condition):
-        snippet = self._conditionator(condition).strip()
-        self._state.wheres.append(snippet)
+        # Append condition directly
+        self._state.wheres.append(condition)
         return self
 
     def AS(self, alias):
@@ -457,7 +446,7 @@ class Query(object):
         this._chain_state()
         this._state.statement_type = 'DELETE'
         
-        if isinstance(table, str): tablename = table
+        if isinstance(table, str): tablename = f'"{table}"'
         elif isinstance(table, Table): tablename = table.__tn__()
         else:
              raise ArgumentError(f"DELETE FROM expects a table name or Table object, got {type(table)}")
@@ -469,39 +458,28 @@ class Query(object):
         return self
 
     def FROM(self, *args, **kwargs):
-        """
-        Adds sources to the FROM clause.
-        """
+        if not args:
+            raise ArgumentError("FROM requires at least one table argument")
+
         self._callstack.append(_FROM_)
-
-        num_of_args = len(args)
-        num_of_tables = len(self._tablenames)
-        msg = f"tables:{num_of_tables}, args:{num_of_args}"
-
-        if num_of_args != num_of_tables and num_of_tables > 0:
-            raise MissingArgumentError(msg)
 
         froms_to_add = []
         for source in args:
-            has_alias = None
+            _from = ""
             if isinstance(source, str):
-                _a = None
-                _q = source
+                # Quote string table names in FROM
+                _from = f'"{source}"'
             elif isinstance(source, Query):
                 _a = source._alias
-                # Nested Query: store the string for now to match legacy behavior
-                _q = f"({source.print()})"
-            elif isinstance(source, Table):
-                _a = source._alias
-                _q = source.__tn__()
-            elif hasattr(source, '__tn__'):
-                 # Support for Schema classes
-                 _a = None # Schemas don't have built-in alias state like Table instances yet
-                 _q = source.__tn__()
+                # Quote alias if present
+                alias_part = f' AS "{_a}"' if _a else ""
+                _from = f"({source.print()}){alias_part}"
+            elif hasattr(source, '__tn__'): # Table
+                # Use Table's own string representation which handles quoting and aliasing
+                _from = str(source)
             else:
-                 raise ArgumentError(f"FROM expects string, Query, Table or Schema, got {type(source)}")
+                 raise ArgumentError(f"FROM expects string, Query, or Table, got {type(source)}")
 
-            _from = f"{_q} AS {_a}" if _a and num_of_tables > 1 else f"{_q}"
             froms_to_add.append(_from)
 
         self._state.from_sources.extend(froms_to_add)
@@ -519,9 +497,8 @@ class Query(object):
         cols = []
         for arg in args:
             if isinstance(arg, str): cols.append(arg)
-            elif isinstance(arg, Table): cols.extend(arg.columns())
-            else: cols.append(arg._name)
-        
+            else: cols.append(str(arg))
+            
         if cols: self._state.groups.extend(cols)
         return self
 
@@ -536,7 +513,7 @@ class Query(object):
         this._state.statement_type = 'INSERT'
 
         if isinstance(table, Table): t = table.__tn__()
-        else: t = table
+        else: t = f'"{table}"'
             
         this._state.insert_table = t
         
@@ -545,8 +522,16 @@ class Query(object):
             cols = list(args[0])
         else:
             cols = list(args)
+        
+        # Determine if cols are strings or Fields
+        quoted_cols = []
+        for c in cols:
+            if isinstance(c, str):
+                quoted_cols.append(f'"{c}"')
+            else:
+                quoted_cols.append(str(c))
             
-        this._state.insert_columns = cols
+        this._state.insert_columns = quoted_cols
         return this
 
     def JOIN(self, table, on=None, join_type='INNER'):
@@ -568,7 +553,7 @@ class Query(object):
             tablename = table.__tn__()
             alias = table._alias
         elif isinstance(table, str):
-            tablename = table
+            tablename = f'"{table}"'
             alias = None
         else:
             raise ArgumentError(f"JOIN expects a table name or Table object, got {type(table)}")
@@ -630,15 +615,6 @@ class Query(object):
 
         Use negative prefix (-column) for descending order.
         
-        Args:
-            *args: Column names, column objects, or negated columns for DESC
-        
-        Returns:
-            Query: self for method chaining
-        
-        Example:
-            query.ORDER_BY('name')  # ORDER BY name ASC
-            query.ORDER_BY('-age')  # ORDER BY age DESC (string with - prefix)
         """
         self._callstack.append('ORDER_BY')
         
@@ -649,14 +625,10 @@ class Query(object):
                     order_parts.append(f"{arg[1:]} DESC")
                 else:
                     order_parts.append(f"{arg} ASC")
-            elif isinstance(arg, Table):
-                # Order by all columns in table
-                for col in arg.columns():
-                    order_parts.append(f"{col} ASC")
             else:
                 # Column/Field object
-                order_parts.append(f"{arg._name} ASC")
-        
+                order_parts.append(f"{str(arg)} ASC")
+                
         if order_parts:
             self._state.orders.extend(order_parts)
         return self
@@ -671,12 +643,11 @@ class Query(object):
             elif isinstance(arg, str):
                 col = arg
             else: #Field Object
-                col = arg._name
+                col = str(arg)
             parsed.append(col)
 
         parsed = parsed or ['*']
 
-        parsed = parsed or ['*']
         self._state.returning = parsed
         return self
 
@@ -705,52 +676,66 @@ class Query(object):
                     _table
                 ) if _table else this._orphans.add(arg)
                 cols.append(arg)
-            elif isinstance(arg, Table):
+            elif hasattr(arg, '__tn__'):
+                # Table object -> SELECT *
                 this._tablenames.add(arg.__tn__())
                 cols.append("*") 
-            elif hasattr(arg, '__tn__') and hasattr(arg, 'columns'):
-                # Support for Schema classes
-                this._tablenames.add(arg.__tn__())
-                # If selecting the Schema class itself, we probably want all columns or *
-                # For now let's use * to match Table behavior
-                cols.append("*")
+            elif hasattr(arg, 'compile'):
+                # Compilable object (WindowFunction, etc.)
+                cols.append(arg)
+            elif hasattr(arg, 'table'):
+                # Field object
+                if arg.table:
+                    this._tablenames.add(arg.table.__tn__())
+                cols.append(str(arg))
             else:
-                this._tablenames.add(arg._meta.__tn__())
-                cols.append(arg._name)
+                 # Fallback
+                 cols.append(str(arg))
         else:
             unique_tablenames = set([this.get_tablename(table) for table in args])
+            # Add found tables to tablenames
+            for t in unique_tablenames:
+                if t: this._tablenames.add(t)
+            
             is_heterogeneous = len(unique_tablenames) > 1
 
             for member in args:
                 if isinstance(member, str):
-                    _table = this.get_tablename(member)
-                    this._tablenames.add(_table) if _table else None
                     cols.append(member)
-                elif isinstance(member, Table):
-                    # activate alias on tables if is_heterogeneous
-                    if is_heterogeneous:
-                        member.AS(member._alias if member._alias else member.__tn__())
-
+                elif hasattr(member, '__tn__'):
+                    # Table object
                     this._tablenames.add(member.__tn__())
-                    cols.extend(member.columns())
+                    # For now select * from table in list
+                    # Or we could expand columns if we knew them, but dynamic table doesn't know columns
+                    cols.append(f"{member._alias or member._name}.*")
+                elif hasattr(member, 'compile'):
+                    # Compilable object (WindowFunction, etc.)
+                    cols.append(member)
+                elif hasattr(member, 'table'):
+                    # Field object
+                    if member.table:
+                        this._tablenames.add(member.table.__tn__())
+                    cols.append(str(member))
                 else:
-                    # Column object
-                    alias = member._imeta._alias
-                    tablename = member._imeta.__tn__()
-                    member._imeta.AS(alias if alias else tablename)
-
-                    this._tablenames.add(tablename)
-                    if is_heterogeneous:
-                        cols.append(f"{member._imeta._alias}.{member._name}")
-                    else:
-                        cols.append(f"{member._name}")
+                    # Fallback for other objects
+                    cols.append(str(member))
 
         this._state.selects = cols
         return this
 
     def SET(self, *args):
         self._callstack.append('SET')
-        updates = [ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args]
+        updates = []
+        for ax in args:
+            if hasattr(ax, 'compile'):
+                updates.append(ax)
+            elif isinstance(ax, (str, Number)):
+                updates.append(ax)
+            elif hasattr(ax, 'print'):
+                updates.append(ax.print(self))
+            else:
+                 updates.append(str(ax))
+        
         self._state.updates.extend(updates)
         return self
 
@@ -782,7 +767,24 @@ class Query(object):
 
     def VALUES(self, *args):
         self._callstack.append(VALUES_)
-        self._state.insert_values.extend(args)
+        
+        # Heuristic for detecting single row vs multiple rows
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+             elem = args[0]
+             # Check if element 0 matches row structure (list/tuple)
+             if elem and isinstance(elem[0], (list, tuple)):
+                 # List of rows
+                 self._state.insert_values.extend(elem)
+             else:
+                 # Single row passed as tuple/list
+                 self._state.insert_values.append(elem)
+        elif args and isinstance(args[0], (list, tuple)):
+             # Multiple args, first is tuple -> assume multiple rows
+             self._state.insert_values.extend(args)
+        else:
+             # Multiple atomic args or single atomic arg -> one row
+             self._state.insert_values.append(args)
+
         return self
 
     def WHERE(self, condition):
@@ -797,9 +799,9 @@ class Query(object):
 
         self._callstack.append(WHERE)
         
-        # Use conditionator to get the string representation
-        snippet = self._conditionator(condition).strip() # Strip leading space
-        self._state.wheres.append(snippet)
+        # Use conditionator to get the string OR Condition object
+        cond = self._conditionator(condition)
+        self._state.wheres.append(cond)
         
         return self
 
@@ -820,8 +822,148 @@ class Query(object):
         this = self._clone()
         this._state.ctes.append((alias, query))
         return this
-             
-        # Add to state
-        this._state.ctes.append((val_alias, query))
-        return this
+
+    # Window Function Methods
+    
+    def PARTITION_BY(self, *args):
+        """
+        Create a WindowSpec with PARTITION BY clause.
+        
+        Use negative prefix (-column) for descending order in ORDER BY.
+        
+        Args:
+            *args: Columns to partition by
+        
+        Returns:
+            WindowSpec: Window specification object
+        """
+        partition_cols = []
+        for arg in args:
+            # Handle negative for descending in ORDER BY context
+            arg_str = str(arg)
+            if arg_str.startswith('-'):
+                # Keep negative for ORDER BY processing in WindowSpec
+                partition_cols.append(arg_str)
+            else:
+                partition_cols.append(arg_str)
+        
+        return WindowSpec(partition_by=partition_cols)
+    
+    def WINDOW(self, name: str, spec: WindowSpec):
+        """
+        Define a named window specification.
+        
+        Args:
+            name: Window name
+            spec: WindowSpec object
+        
+        Returns:
+            Query: self for method chaining
+        """
+        self._state.window_definitions[name] = spec
+        return self
+    
+    # Ranking Window Functions
+    
+    def ROW_NUMBER(self):
+        """ROW_NUMBER() window function."""
+        return _ROW_NUMBER()
+    
+    def RANK(self):
+        """RANK() window function."""
+        return _RANK()
+    
+    def DENSE_RANK(self):
+        """DENSE_RANK() window function."""
+        return _DENSE_RANK()
+    
+    def NTILE(self, n: int):
+        """NTILE(n) window function."""
+        return _NTILE(n)
+    
+    def PERCENT_RANK(self):
+        """PERCENT_RANK() window function."""
+        return _PERCENT_RANK()
+    
+    def CUME_DIST(self):
+        """CUME_DIST() window function."""
+        return _CUME_DIST()
+    
+    # Value Window Functions
+    
+    def LAG(self, column, offset: int = 1, default=None):
+        """
+        LAG(column [, offset [, default]]) window function.
+        
+        Args:
+            column: Column to get previous value from
+            offset: Number of rows back (default 1)
+            default: Default value if no previous row
+        """
+        return _LAG(column, offset, default)
+    
+    def LEAD(self, column, offset: int = 1, default=None):
+        """
+        LEAD(column [, offset [, default]]) window function.
+        
+        Args:
+            column: Column to get next value from
+            offset: Number of rows forward (default 1)
+            default: Default value if no next row
+        """
+        return _LEAD(column, offset, default)
+    
+    def FIRST_VALUE(self, column):
+        """FIRST_VALUE(column) window function."""
+        return _FIRST_VALUE(column)
+    
+    def LAST_VALUE(self, column):
+        """LAST_VALUE(column) window function."""
+        return _LAST_VALUE(column)
+    
+    def NTH_VALUE(self, column, n: int):
+        """NTH_VALUE(column, n) window function."""
+        return _NTH_VALUE(column, n)
+    
+    # Aggregate Window Functions
+    
+    def SUM(self, column):
+        """
+        SUM(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowSum(column)
+    
+    def AVG(self, column):
+        """
+        AVG(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowAvg(column)
+    
+    def COUNT(self, column):
+        """
+        COUNT(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowCount(column)
+    
+    def MIN(self, column):
+        """
+        MIN(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowMin(column)
+    
+    def MAX(self, column):
+        """
+        MAX(column) - can be used as aggregate or window function.
+        
+        When used with .OVER(), becomes a window function.
+        """
+        return WindowMax(column)
 

@@ -1,224 +1,356 @@
-# Query API Reference
+# Query Builder
 
-The `Query` class is the core of SuperSQL. It provides a fluent interface for building and executing SQL queries across multiple database vendors.
+The `Query` object is your main entry point for building and executing SQL with automatic parameterization for security.
 
-## Core Imports
-
-```python
-from supersql import Query, Table
-from supersql import String, Integer, Date, UUID  # Data types
-from supersql.errors import VendorDependencyError  # Error handling
-```
-
-## Query Object
-
-The Query object serves as both a query builder and database connection manager. All database interactions happen through Query instances.
-
-
-## Creating Query Objects
-
-### Basic Query Creation
+## Initialization
 
 ```python
 from supersql import Query
 
-# Database connection required (first parameter is engine)
-query = Query("postgres",
-              user="postgres",
-              password="password",
-              host="localhost",
-              port=5432,
-              database="mydb")
+# Postgres
+db = Query('postgres', database='mydb', user='postgres', password='pass', host='localhost')
+
+# SQLite
+db = Query('sqlite:///my_db.sqlite')
+
+# MySQL
+db = Query('mysql', database='mydb', user='root', password='pass')
 ```
 
-### Constructor Parameters
+## SELECT
+
+Use `.SELECT()` to choose columns. All queries are automatically parameterized for security.
 
 ```python
-Query(
-    engine,           # Required: Database vendor
-    dsn=None,         # Optional: Connection string
-    user=None,        # Optional: Username
-    password=None,    # Optional: Password
-    host=None,        # Optional: Host (default: localhost)
-    port=None,        # Optional: Port (vendor-specific defaults)
-    database=None,    # Optional: Database name
-    silent=True,      # Optional: Disable syntax checking
-    unsafe=False      # Optional: Allow unsafe operations
-)
+from supersql import Table
+
+users = Table("users")
+
+# SELECT * FROM "users"
+await db.SELECT("*").FROM(users).run()
+
+# SELECT "users"."name", "users"."email" FROM "users"  
+await db.SELECT(users.name, users.email).FROM(users).run()
+
+# With table alias
+u = Table("users").AS("u")
+await db.SELECT(u.name, u.email).FROM(u).run()
 ```
 
-### Supported Database Engines
-
-| Engine | Aliases | Default Port | Dependencies |
-|--------|---------|--------------|--------------|
-| `postgres` | `postgresql` | 5432 | `asyncpg` |
-| `mysql` | `mariadb` | 3306 | `aiomysql` |
-| `mssql` | `sqlserver` | 1433 | `aioodbc`, `pyodbc` |
-| `sqlite` | - | - | `aiosqlite` |
-| `oracle` | `oracledb` | 1521 | `cx_Oracle` or `oracledb` |
-| `athena` | - | - | `PyAthena` |
-| `presto` | - | - | `presto-python-client` |
-
-!!! info "Vendor Dependencies"
-    Install vendor-specific dependencies with `pip install supersql[postgres]`.
-    See [Vendor Dependencies](vendor-dependencies.md) for details.
-
-### Environment Variables
-
-SuperSQL automatically reads these environment variables:
-
-```bash
-export SUPERSQL_DATABASE_USER=myuser
-export SUPERSQL_DATABASE_PASSWORD=mypassword
-export SUPERSQL_DATABASE_HOST=localhost
-export SUPERSQL_DATABASE_PORT=5432
-export SUPERSQL_DATABASE_NAME=mydb
-```
+### Column Aliases
 
 ```python
-# These will be used automatically if not provided
-query = Query("postgres")
+# SELECT "users"."name" AS user_name FROM "users"
+await db.SELECT(users.name.AS("user_name")).FROM(users).run()
 ```
 
-### Connection Examples
+## WHERE
 
-#### PostgreSQL
-```python
-query = Query("postgres",
-              user="postgres",
-              password="password",
-              host="localhost",
-              database="mydb")
-```
-
-#### MySQL
-```python
-query = Query("mysql",
-              user="root",
-              password="password",
-              host="localhost",
-              database="mydb")
-```
-
-#### SQL Server
-```python
-query = Query("mssql",
-              user="sa",
-              password="password",
-              host="localhost",
-              database="mydb")
-```
-
-#### SQLite
-```python
-query = Query("sqlite", database="mydb.sqlite")
-# or in-memory
-query = Query("sqlite", database=":memory:")
-```
-
-- *__dialect__*: What database dialect are you targeting. __`str`__
-- *__user__*: The database user to connect as. __`str`__
-- *__password__*: The database password for the provided user. __`str`__
-- *__host__*: The IP address or hostname where the database lives with optional
-    port information i.e. `localhost` or `localhost:5432` are both valid values. __`str`__
-- *__port__*: Optional port information (ignored if port is found in `host` string). __`int`__
-- *__database__*: The name of the target database on the host. __`str`__
-
-&nbsp;
-
-
-
-&nbsp;
-
-## Query Command API
-
-SuperSQL supports almost all SQL commands and the goal is to support all SQL commands
-before v2020.1 comes out.
-
-SQL commands supported as at v2019.3 includes:
-
-- SELECT
-- FROM
-- WHERE
-- GROUP_BY
-- ORDER_BY
-- AS
-- IN
-- JOIN
-- HAVING
-- LIMIT
-- FETCH
-- OFFSET
-- BETWEEN
-- FUNCTION
-- WITH
-- WITH_RECURSIVE
-- UPSERT
-- INSERT
-- CREATE (tables, databases, extensions, views, triggers, schemas, functions etc.)
-- DROP
-- UPDATE
-- AND
-- OR
-- CAST
-- UNION
-- UNION_ALL
-
-For a full list of supported SQL constructs with code examples, see the examples section in the navigation.
-
-
-## How Query Commands Work?
-
-Every query object you create will have all the SQL commands functions as a python method with
-CAPITALIZED method names, let us nickname these capitalized methods __`sqlproxies`__.
-
-Perhaps it is more important to note that __`sqlproxies`__ are chainable and always return an
-instance of the same query object with the exception of __SELECT__ and __WITH__ queries.
-
-!!!note "SELECT, WITH, and WITH RECURSIVE returns a new Query instance"
-    Whilst __`sqlproxies`__  return the same query object - __SELECT does not__.
-    
-    It creates a clone of the original query object so every select or subquery
-    select has its own new slate from which to build and execute queries. This is necessary
-    so you don't have to instantiate new query objects in subqueries.
-
-    You can take a look at the implementation on github to see how SELECT differs from the
-    other __`sqlproxies`__
+Chain `.WHERE()` clauses for filtering. All values are automatically parameterized.
 
 ```python
-from supersql import Query
-
-query = Query(...)  # connection params as required
-
-emp = query.database("mydbname").tables().get("employee")
-
-select_all = Query.SELECT().FROM(emp)
-select_all_str = Query.SELECT("*").FROM("employee")
-select_all_schema = Query.SELECT(emp).FROM(emp)
-
-```
-
-
-### Executing Queries
-
-```py
-from supersql import Query
-from mycodebase.schemas import Employee
-
-query = Query(...)
-emp = Employee()
-
-statement = query.SELECT(
-    emp.first_name, emp.last_name, emp.age, emp.email
-).FROM(
-    emp
+# WHERE "users"."age" > $1 AND "users"."active" = $2
+# Parameters: [18, True]
+await db.SELECT(users.name).FROM(users).WHERE(
+    users.age > 18
 ).WHERE(
-    emp.email == "john.doe@example.org"
-)
+    users.active == True
+).run()
 
-results = statement.execute()
+# User input is safely parameterized
+age_input = 21  # From user
+await db.SELECT(users.name).FROM(users).WHERE(
+    users.age >= age_input
+).run()
 ```
 
-Executing queries will return an `iterable` python object that is an instance of the
-`supersql.core.result.Result` python class.
+### Operators
 
+Standard Python operators are overloaded for `Field` objects and return `Condition` objects:
+
+| Operator | SQL | Example |
+|----------|-----|---------|
+| `==` | `=` | `users.age == 21` |
+| `!=` | `<>` | `users.status != 'banned'` |
+| `>` | `>` | `users.age > 18` |
+| `>=` | `>=` | `users.score >= 100` |
+| `<` | `<` | `users.balance < 0` |
+| `<=` | `<=` | `users.attempts <= 3` |
+| `&` | `AND` | `(users.age > 18) & (users.active == True)` |
+| `|` | `OR` | `(users.role == 'admin') | (users.role == 'mod')` |
+| `~` | `NOT` | `~(users.deleted == True)` |
+
+### Special Methods
+
+Field objects have special methods for advanced filtering:
+
+```python
+# IN - WHERE "users"."status" IN ($1, $2)
+await db.SELECT("*").FROM(users).WHERE(
+    users.status.IN(['active', 'pending'])
+).run()
+
+# NOT IN
+await db.SELECT("*").FROM(users).WHERE(
+    users.id.NOT_IN([1, 2, 3])
+).run()
+
+# LIKE - WHERE "users"."name" LIKE $1
+await db.SELECT("*").FROM(users).WHERE(
+    users.name.LIKE('A%')
+).run()
+
+# ILIKE (case-insensitive, PostgreSQL)
+await db.SELECT("*").FROM(users).WHERE(
+    users.email.ILIKE('%@gmail.com')
+).run()
+
+# BETWEEN - WHERE "users"."age" BETWEEN $1 AND $2
+await db.SELECT("*").FROM(users).WHERE(
+    users.age.BETWEEN(18, 65)
+).run()
+
+# IS NULL / IS NOT NULL
+await db.SELECT("*").FROM(users).WHERE(users.deleted_at.IS_NULL())
+await db.SELECT("*").FROM(users).WHERE(users.email.IS_NOT_NULL())
+```
+
+## JOIN
+
+SuperSQL supports all standard SQL join types with automatic identifier quoting.
+
+```python
+users = Table("users")
+posts = Table("posts")
+
+# INNER JOIN "posts" ON "users"."id" = "posts"."user_id"
+await db.SELECT(
+    users.name, posts.title
+).FROM(users).JOIN(
+    posts, on=f"{users.id} = {posts.user_id}"
+).run()
+
+# Or use Condition objects for ON clause
+await db.SELECT(
+    users.name, posts.title
+).FROM(users).JOIN(
+    posts, on=(users.id == posts.user_id)
+).run()
+```
+
+### Join Types
+
+- `.JOIN(table, on=...)` - INNER JOIN (default)
+- `.LEFT_JOIN(table, on=...)` - LEFT OUTER JOIN
+- `.RIGHT_JOIN(table, on=...)` - RIGHT OUTER JOIN  
+- `.FULL_JOIN(table, on=...)` - FULL OUTER JOIN
+- `.CROSS_JOIN(table)` - CROSS JOIN (no ON clause)
+
+## INSERT
+
+INSERT operations automatically parameterize all values for security.
+
+```python
+users = Table("users")
+
+# Single record - INSERT INTO "users" ("name", "age") VALUES ($1, $2)
+# Parameters: ['Alice', 30]
+await db.INSERT_INTO("users", "name", "age").VALUES('Alice', 30).run()
+
+# Or use Field objects
+await db.INSERT_INTO(users, users.name, users.email, users.age).VALUES(
+    'Alice', 'alice@example.com', 30
+).run()
+
+# Multiple records
+await db.INSERT_INTO(users, users.name, users.age).VALUES(
+    ('Bob', 25),
+    ('Charlie', 35)
+).run()
+
+# With RETURNING clause
+result = await db.INSERT_INTO(users, users.name, users.email).VALUES(
+    'Dave', 'dave@example.com'
+).RETURNING(users.id, users.created_at).run()
+```
+
+## UPDATE
+
+UPDATE operations are automatically parameterized.
+
+```python
+# UPDATE "users" SET "active" = $1 WHERE "users"."id" = $2
+# Parameters: [True, 1]
+await db.UPDATE(users).SET(
+    users.active == True
+).WHERE(users.id == 1).run()
+
+# Multiple columns
+await db.UPDATE(users).SET(
+    users.name == "John Smith",
+    users.age == 31
+).WHERE(users.id == 1).run()
+
+# User input is safely parameterized
+new_status = "verified"  # From user
+await db.UPDATE(users).SET(
+    users.status == new_status
+).WHERE(users.email == "user@example.com").run()
+```
+
+## DELETE
+
+DELETE operations with parameterized WHERE clauses.
+
+```python
+# DELETE FROM "users" WHERE "users"."id" = $1
+# Parameters: [1]
+await db.DELETE_FROM(users).WHERE(users.id == 1).run()
+
+# With user input (safely parameterized)
+user_id = 42  # From user
+await db.DELETE_FROM(users).WHERE(users.id == user_id).run()
+```
+
+## Common Table Expressions (CTEs)
+
+Use `.WITH(alias, subquery)` to create CTEs for complex queries.
+
+### Basic CTE
+
+```python
+users = Table("users")
+orders = Table("orders")
+
+# Create a CTE for active users
+active_users_cte = db.SELECT(users.id, users.name).FROM(users).WHERE(
+    users.active == True
+)
+
+# Use the CTE in main query
+# WITH active_users AS (SELECT ...) SELECT * FROM active_users
+result = await db.WITH("active_users", active_users_cte).SELECT(
+    "*"
+).FROM("active_users").run()
+```
+
+### Multiple CTEs
+
+```python
+# Chain multiple CTEs
+high_value_orders = db.SELECT(orders.user_id).FROM(orders).WHERE(
+    orders.total > 1000
+)
+
+active_users = db.SELECT(users.id, users.name).FROM(users).WHERE(
+    users.active == True
+)
+
+# Use both CTEs
+result = await db.WITH("high_value", high_value_orders).WITH(
+    "active", active_users
+).SELECT("*").FROM("high_value").JOIN(
+    "active", on="high_value.user_id = active.id"
+).run()
+```
+
+### Recursive CTEs
+
+```python
+# Employee hierarchy example
+employees = Table("employees")
+
+# Recursive CTE for organizational chart
+hierarchy = """
+SELECT id, name, manager_id, 1 as level
+FROM employees
+WHERE manager_id IS NULL
+UNION ALL
+SELECT e.id, e.name, e.manager_id, h.level + 1
+FROM employees e
+INNER JOIN hierarchy h ON e.manager_id = h.id
+"""
+
+result = await db.WITH("hierarchy", hierarchy).SELECT(
+    "*"
+).FROM("hierarchy").ORDER_BY("level").run()
+```
+
+## ORDER BY
+
+```python
+# ORDER BY "users"."age" ASC
+await db.SELECT("*").FROM(users).ORDER_BY(users.age).run()
+
+# Multiple columns
+await db.SELECT("*").FROM(users).ORDER_BY(users.age, users.name).run()
+
+# Descending (use '-' prefix for strings)
+await db.SELECT("*").FROM(users).ORDER_BY("-age").run()
+```
+
+## LIMIT and OFFSET
+
+```python
+# LIMIT 10
+await db.SELECT("*").FROM(users).LIMIT(10).run()
+
+# LIMIT 10 OFFSET 20
+await db.SELECT("*").FROM(users).LIMIT(10, offset=20).run()
+```
+
+## GROUP BY and HAVING
+
+```python
+# GROUP BY "users"."country"
+await db.SELECT(users.country, "COUNT(*) as total").FROM(users).GROUP_BY(
+    users.country
+).run()
+
+# With HAVING
+await db.SELECT(users.country, "COUNT(*) as total").FROM(users).GROUP_BY(
+    users.country
+).HAVING("COUNT(*) > 10").run()
+```
+
+## Raw SQL
+
+You can mix raw SQL strings with the query builder when needed:
+
+```python
+# Full raw query
+await db.SELECT("*").FROM("users").WHERE("age > 18").run()
+
+# Mixed - values still parameterized in WHERE using Field objects
+await db.SELECT("*").FROM("users").WHERE(users.age > 18).run()
+```
+
+!!! warning "Parameterization"
+    When using raw SQL strings in WHERE clauses, you must manually ensure they're safe from SQL injection. Use Field objects and operators for automatic parameterization.
+
+## Transaction Support
+
+```python
+# Begin transaction
+await db.BEGIN().run()
+
+try:
+    await db.INSERT_INTO(users, users.name).VALUES("Alice").run()
+    await db.UPDATE(users).SET(users.balance == 100).WHERE(users.name == "Bob").run()
+    await db.COMMIT().run()
+except Exception:
+    await db.ROLLBACK().run()
+```
+
+## Execution
+
+All queries end with `.run()` for async execution:
+
+```python
+# Returns list of records
+results = await query.SELECT("*").FROM(users).run()
+
+# Iterate over results
+for user in results:
+    print(user.name, user.email)
+```

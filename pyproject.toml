@@ -17,7 +17,7 @@ documentation = "https://rayattack.github.io/supersql"
 [tool.poetry.dependencies]
 python = "^3.6"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 
 [build-system]
 requires = ["poetry>=0.12"]

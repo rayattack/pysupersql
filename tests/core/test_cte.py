@@ -16,7 +16,7 @@ class TestCTE(TestCase):
         q_main = q_main.WITH('users_cte', q_cte)
         q_main = q_main.SELECT('*').FROM('users_cte')
         
-        expected = "WITH users_cte AS (SELECT * FROM users)\nSELECT * FROM users_cte"
+        expected = 'WITH users_cte AS (SELECT * FROM "users")\nSELECT * FROM "users_cte"'
         self.assertEqual(q_main.print(), expected)
 
     def test_multiple_ctes(self):
@@ -31,7 +31,7 @@ class TestCTE(TestCase):
         
         # Note: Compiler joins CTEs with newline before main statement? 
         # Compiler logic: "\n".join(parts). parts = ["WITH ...", "SELECT ..."].
-        expected = "WITH cte1 AS (SELECT a FROM t1), cte2 AS (SELECT b FROM t2)\nSELECT * FROM cte1 INNER JOIN cte2 ON cte1.a = cte2.b"
+        expected = 'WITH cte1 AS (SELECT a FROM "t1"), cte2 AS (SELECT b FROM "t2")\nSELECT * FROM "cte1" INNER JOIN "cte2" ON cte1.a = cte2.b'
         self.assertEqual(q_main.print(), expected)
         
     def test_cte_with_string_subquery(self):
@@ -42,5 +42,5 @@ class TestCTE(TestCase):
         q_main = q_main.WITH('old_users', "SELECT * FROM users WHERE age > 50")
         q_main = q_main.DELETE_FROM('old_users')
         
-        expected = "WITH old_users AS (SELECT * FROM users WHERE age > 50)\nDELETE FROM old_users"
+        expected = 'WITH old_users AS (SELECT * FROM users WHERE age > 50)\nDELETE FROM "old_users"'
         self.assertEqual(q_main.print(), expected)

@@ -52,16 +52,6 @@ class Database(object):
     """
 
     def __init__(self, query: 'Query', **kwargs: Any):
-        """
-        Added here just before going to bed on 1st Feb 2021, might remove
-        as this is not yet ratified. Query might be circular import?
-
-        Do we want to keep everything centered around query objects?
-        Might be a simple API but is the best design for the code?
-        If everything is kept around query then
-        q = Query()
-        d = Database(q)
-        """
         try:
             self._engine = self._get_engine_instance(query, **kwargs)
             logger.debug(f"Initialized Database with engine for: {query._engine}")
@@ -98,7 +88,9 @@ class Database(object):
         await self.disconnect()
 
     async def connect(self) -> None:
-        assert not self.connected, "Connected already..."
+        if self.connected:
+            return
+
         logger.info(f"Connecting to database: {self._engine.__class__.__name__}")
         try:
             await self._engine.connect()
@@ -109,7 +101,9 @@ class Database(object):
             raise
 
     async def disconnect(self) -> None:
-        assert self.connected, "No existing connections found..."
+        if not self.connected:
+            return
+
         logger.info("Disconnecting from database")
         try:
             await self._engine.disconnect()

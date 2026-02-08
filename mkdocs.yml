@@ -25,13 +25,12 @@ nav:
       - Getting Started: installation.md
       - Vendor Dependencies: vendor-dependencies.md
       - Connecting to Databases: connecting.md
-  - Create Database Tables in Python: tables.md
-  - Query Data From Database: query.md
-  - SELECT Queries: select.md
-  - View and Use Query Results: results.md
-  - SQL Command Reference:
-      - Function: postgres/functions.md
-  - Database Discovery: database.md
+  - Core Concepts:
+      - Schema Definition: schema.md
+      - Data Types: datatypes.md
+      - Query Builder: query.md
+      - Results & Iteration: results.md
+      - Reflection & Inspection: reflection.md
   - Examples:
     - Overview: examples.md
     - BETWEEN: examples/between.md
@@ -66,8 +65,6 @@ nav:
     - DDL Operations: ddl/create.md
     - DQL Operations: dql/select.md
     - Commits: commit.md
-  - Plugins &amp; Extensions: extensions.md
-
 
 extra_css:
   - 'custom.css'
