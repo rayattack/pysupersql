@@ -350,7 +350,7 @@ class Query(object):
         table name
         """
         if isinstance(table, Table):
-            return Table.__tn__()
+            return table.__tn__()
         elif isinstance(table, str):
             processed = table.split(".")
             parts = len(processed)
@@ -359,25 +359,47 @@ class Query(object):
             column = table
             return column._imeta.__tn__()
     
+    def build(self) -> str:
+        """
+        Compiles the current state to a SQL string and updates self._args w/ parameters.
+        Returns the SQL string.
+        """
+        if not self._state.statement_type:
+            return ""
+            
+        sql, params = self._compiler.compile(self._state)
+        if params:
+            self._args = params
+        return sql
+
     def print(self):
         """
         Prints the current SQL statement as it exists on the query object
-
-        ..return {str}  String representation of the SQL command to be sent
-            to the database server if `execute` method is called.
+        
+        ..return {str}  String representation of the SQL command
         """
-        # If we have state, compile it
-        return self._compiler.compile(self._state)
+        sql = self.build()
+        print(sql)
+        if self._args:
+            print(f"Parameters: {self._args}")
+        return sql
     
     async def run(self, *args, **kwargs) -> Results:
+        # Build SQL and parameters before execution
+        self.build()
         async with self._db as db:
             results = await db.execute(self)
             return Results(results)
 
-    async def sql(self, statement: str):
-        async with self._db as db:
-            results = await db.raw(statement)
-            return results
+    async def sql(self, statement: str = None):
+        """
+        Execute raw SQL.
+        """
+        if statement:
+             async with self._db as db:
+                results = await db.raw(statement)
+                return results
+        return None
 
     def was_called(self, command):
         return command in self._callstack
@@ -428,10 +450,8 @@ class Query(object):
         this._chain_state()
         this._state.statement_type = 'DELETE'
         
-        if isinstance(table, str):
-            tablename = table
-        elif isinstance(table, Table):
-            tablename = table.__tn__()
+        if isinstance(table, str): tablename = table
+        elif isinstance(table, Table): tablename = table.__tn__()
         else:
              raise ArgumentError(f"DELETE FROM expects a table name or Table object, got {type(table)}")
         
@@ -596,8 +616,8 @@ class Query(object):
             Query: self for method chaining
         """
         self._callstack.append('LIMIT')
-        if offset is not None: self._sql.append(f" LIMIT {count} OFFSET {offset}")
-        else: self._sql.append(f" LIMIT {count}")
+        self._state.limit = count
+        if offset is not None: self._state.offset = offset
         return self
 
     def ORDER_BY(self, *args):
@@ -752,21 +772,7 @@ class Query(object):
 
     def VALUES(self, *args):
         self._callstack.append(VALUES_)
-        vals = []
-
-        def xfy(val):
-            """Make vale sql friendly i.e. convert dates, booleans etc to sql types"""
-            if isinstance(val, str): val = val.replace("'", "''") 
-            elif isinstance(val, bool): val = 'true' if val else 'false'
-
-            return f"{val}"
-
-        for values in args:
-            _wparens = ', '.join(f"'{xfy(value)}'" if isinstance(value, (str, bool)) else f"{value}" for value in values)
-            sql = f"({_wparens})"
-            vals.append(sql)
-
-        self._state.values.extend(vals)
+        self._state.insert_values.extend(args)
         return self
 
     def WHERE(self, condition):

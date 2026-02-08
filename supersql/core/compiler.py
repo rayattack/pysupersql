@@ -24,7 +24,7 @@ class SQLCompiler(ABC):
         """Generate the next parameter placeholder"""
         return self.parameter_placeholder
 
-    def compile(self, state: QueryState) -> str:
+    def compile(self, state: QueryState) -> tuple[str, list]:
         """
         Main entry point. Orchestrates the generation of SQL parts
         in the correct order.
@@ -32,25 +32,32 @@ class SQLCompiler(ABC):
         self.reset()
         
         compiled_parts = []
+        bound_parameters = []
         
         # Compile chained previous states
         for prev_state in state.chain:
-            compiled_parts.append(self._compile_single(prev_state))
+            sql, params = self._compile_single(prev_state)
+            compiled_parts.append(sql)
+            bound_parameters.extend(params)
             
         # Compile current state
-        compiled_parts.append(self._compile_single(state))
+        sql, params = self._compile_single(state)
+        compiled_parts.append(sql)
+        bound_parameters.extend(params)
         
-        return "; ".join(compiled_parts)
+        return "; ".join(compiled_parts), bound_parameters
 
-    def _compile_single(self, state: QueryState) -> str:
+    def _compile_single(self, state: QueryState) -> tuple[str, list]:
         # 0. Transaction management
         if state.statement_type == 'BEGIN':
-            return "BEGIN"
+            return "BEGIN", []
         if state.statement_type == 'COMMIT':
-            return "COMMIT;"
+            return "COMMIT;", []
 
         # 1. CTEs (WITH clause)
         sql_parts = []
+        parameters = []
+        
         if state.ctes:
             cte_parts = []
             for alias, query in state.ctes:
@@ -61,17 +68,25 @@ class SQLCompiler(ABC):
 
         # 2. Main Statement (SELECT / INSERT / UPDATE / DELETE)
         if state.statement_type == 'SELECT':
-            sql_parts.append(self._compile_select(state))
+            sql, params = self._compile_select(state)
+            sql_parts.append(sql)
+            parameters.extend(params)
         elif state.statement_type == 'INSERT':
-            sql_parts.append(self._compile_insert(state))
+            sql, params = self._compile_insert(state)
+            sql_parts.append(sql)
+            parameters.extend(params)
         elif state.statement_type == 'UPDATE':
-            sql_parts.append(self._compile_update(state))
+            sql, params = self._compile_update(state)
+            sql_parts.append(sql)
+            parameters.extend(params)
         elif state.statement_type == 'DELETE':
-            sql_parts.append(self._compile_delete(state))
+            sql, params = self._compile_delete(state)
+            sql_parts.append(sql)
+            parameters.extend(params)
             
-        return "\n".join(part for part in sql_parts if part)
+        return "\n".join(part for part in sql_parts if part), parameters
 
-    def _compile_select(self, state: QueryState) -> str:
+    def _compile_select(self, state: QueryState) -> tuple[str, list]:
         parts = []
         
         # SELECT
@@ -111,26 +126,41 @@ class SQLCompiler(ABC):
              parts.append(f"OFFSET {state.offset}")
         if state.returning:
             parts.append(f"RETURNING {', '.join(state.returning)}")
-        return " ".join(parts)
+        return " ".join(parts), []
 
-    def _compile_insert(self, state: QueryState) -> str:
+    def _compile_insert(self, state: QueryState) -> tuple[str, list]:
         parts = []
+        parameters = []
         parts.append(f"INSERT INTO {state.insert_table}")
         
         if state.insert_columns:
              parts.append(f"({', '.join(str(c) for c in state.insert_columns)})")
         
-        if state.values:
+        if state.insert_values:
+            # Parameterized values
+            values_placeholders = []
+            for row in state.insert_values:
+                row_placeholders = []
+                for val in row:
+                    row_placeholders.append(self.next_placeholder())
+                    parameters.append(val)
+                values_placeholders.append(f"({', '.join(row_placeholders)})")
+            parts.append(f"VALUES {', '.join(values_placeholders)}")
+            
+        elif state.values:
              parts.append(f"VALUES {', '.join(state.values)}")
+             
         elif state.selects:
-             parts.append(self._compile_select(state))
+             sql, params = self._compile_select(state)
+             parts.append(sql)
+             parameters.extend(params)
              
         if state.returning:
             parts.append(f"RETURNING {', '.join(state.returning)}")
             
-        return " ".join(parts)
+        return " ".join(parts), parameters
 
-    def _compile_update(self, state: QueryState) -> str:
+    def _compile_update(self, state: QueryState) -> tuple[str, list]:
         parts = []
         parts.append(f"UPDATE {state.update_table}")
         
@@ -143,10 +173,11 @@ class SQLCompiler(ABC):
         if state.returning:
              parts.append(f"RETURNING {', '.join(state.returning)}")
              
-        return " ".join(parts)
+        return " ".join(parts), []
 
-    def _compile_delete(self, state: QueryState) -> str:
+    def _compile_delete(self, state: QueryState) -> tuple[str, list]:
         parts = []
+        parameters = []
         parts.append("DELETE FROM")
 
         if state.from_sources:
@@ -162,7 +193,7 @@ class SQLCompiler(ABC):
             ret = ", ".join(state.returning)
             parts.append(f"RETURNING {ret}")
             
-        return " ".join(parts)
+        return " ".join(parts), []
 
 class PostgresCompiler(SQLCompiler):
     @property

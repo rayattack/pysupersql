@@ -150,15 +150,17 @@ class Database(object):
         asyncio_run(self.rollback())
 
     async def execute(self, query: 'Query', consequence=None, limit=None, transactions=False) -> Results:
-        logger.debug(f"Executing query: {query.print()}")
+        # Ensure query is built
+        sql = query.build()
+        logger.debug(f"Executing query: {sql}")
         try:
             async with self._engine.pool.acquire() as connection:
                 if query._consequence == 'DQL': method = connection.fetch
                 elif query._consequence == 'DML': method = connection.fetchval
                 else: method = connection.execute
     
-                if query._unsafe: return await method(query.print())
-                else: return await method(query.print(), *query.args)
+                if query._unsafe: return await method(sql)
+                else: return await method(sql, *query.args)
         except Exception as e:
             logger.error(f"Query execution failed: {e}")
             raise

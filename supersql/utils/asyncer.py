@@ -3,7 +3,7 @@ from functools import wraps, partial
 
 
 def asynchronize(func):
-    @wraps
+    @wraps(func)
     async def delegate(*args, loop=None, executor=None, **kwargs):
         if loop is None:
             loop = asyncio.get_event_loop()
@@ -13,7 +13,7 @@ def asynchronize(func):
 
 
 def synchronize(func):
-    @wraps
+    @wraps(func)
     def delegate(*args, **kwargs):
         result = func(*args, **kwargs)
         if asyncio.iscoroutine(result):

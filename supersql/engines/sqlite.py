@@ -196,7 +196,7 @@ class Pool(object):
 class Connection(IConnection):
     def __init__(self, pool: Pool):
         self._pool = pool
-        self._connection = typing.Union[None, aiosqlite.Connection]
+        self._connection: typing.Union[None, aiosqlite.Connection] = None
 
     @disconnected
     async def begin(self) -> None:

@@ -49,6 +49,7 @@ class QueryState:
     delete_table: Optional[str] = None
     
     values: List[str] = field(default_factory=list)
+    insert_values: List[tuple] = field(default_factory=list)
     updates: List[str] = field(default_factory=list)
     
     # RETURNING

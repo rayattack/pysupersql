@@ -122,3 +122,19 @@ class Engine(IEngine):
 
     def connection(self) -> "Connection":
         return Connection(self.pool)
+
+
+class Connection(IConnection):
+    def __init__(self, pool):
+        self._pool = pool
+        self._connection = None
+
+    @disconnectable
+    async def begin(self):
+        self._connection = await self._pool.acquire()
+        return self._connection
+
+    @connectable
+    async def done(self):
+        await self._pool.release(self._connection)
+        self._connection = None
