@@ -14,7 +14,12 @@ from supersql.errors import (
     MissingArgumentError,
     MissingCommandError,
     DatabaseError,
-    ProgrammingError
+    ArgumentError,
+    MissingArgumentError,
+    MissingCommandError,
+    DatabaseError,
+    ProgrammingError,
+    ValidationError
 )
 
 from .database import Database
@@ -513,16 +518,11 @@ class Query(object):
         
         cols = []
         for arg in args:
-            if isinstance(arg, str):
-                cols.append(arg)
-            elif isinstance(arg, Table):
-                cols.extend(arg.columns())
-            else:
-                # Column/Field object
-                cols.append(arg._name)
+            if isinstance(arg, str): cols.append(arg)
+            elif isinstance(arg, Table): cols.extend(arg.columns())
+            else: cols.append(arg._name)
         
-        if cols:
-            self._state.groups.extend(cols)
+        if cols: self._state.groups.extend(cols)
         return self
 
     def INSERT_INTO(self, table: str, *args):
@@ -535,10 +535,8 @@ class Query(object):
         this._chain_state()
         this._state.statement_type = 'INSERT'
 
-        if isinstance(table, Table):
-            t = table.__tn__()
-        else:
-            t = table
+        if isinstance(table, Table): t = table.__tn__()
+        else: t = table
             
         this._state.insert_table = t
         

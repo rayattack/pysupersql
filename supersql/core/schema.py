@@ -1,12 +1,25 @@
-from typing import TypedDict, Annotated, Type, Dict, Any, get_type_hints
+from typing import TypedDict, Annotated, Type, Dict, Any, get_type_hints, List, Union, Optional
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
+try:
+    from typing import NotRequired
+except ImportError:
+    try:
+        from typing_extensions import NotRequired
+    except ImportError:
+        NotRequired = Optional
+
 from supersql.datatypes.numeric import Integer, Double, Number
 from supersql.datatypes.base import Base
 from supersql.datatypes.string import String, Char, Text
+from supersql.datatypes.json import JSON
 from supersql.core.table import Table
-
-# Initialize global validator from Pytastic if needed, or rely on internal validation
 from pytastic import Pytastic
+
 _vx = Pytastic()
+
 
 class SchemaMeta(type):
     """
@@ -36,16 +49,20 @@ class SchemaMeta(type):
                 fields_cache[field_name] = descriptor
 
         cls.fields_cache = fields_cache
-        # Register for validation
-        try:
-            _vx.register(cls)
-        except Exception:
-            pass # Maybe already registered or partial class
-
+        _vx.register(cls)
         return cls
 
     @staticmethod
     def _create_descriptor(name: str, annotation: Any) -> Base:
+        """
+        Factory to create specific SuperSQL datatype descriptors from annotations.
+        """
+        # Handle NotRequired
+        is_required = True
+        if hasattr(annotation, '__origin__') and annotation.__origin__ is NotRequired:
+            annotation = annotation.__args__[0]
+            is_required = False
+
         # Unwrap Annotated
         if hasattr(annotation, '__metadata__') and annotation.__metadata__:
              constraints = [m for m in annotation.__metadata__ if isinstance(m, str)]
@@ -57,17 +74,37 @@ class SchemaMeta(type):
         
         # Parse logic
         kwargs = SchemaMeta._parse_constraints(constraint_str)
+        if not is_required:
+            kwargs['required'] = False
         
+        # Handle Generics (List[int], Dict[str, Any], etc)
+        # For List[str], base_type is List[str], origin is list
+        origin = getattr(base_type, '__origin__', base_type)
+        
+        # Handle Literal
+        if origin is Literal:
+            # Assume all literal values are of the same type for SQL mapping
+            args = getattr(base_type, '__args__', [])
+            if args:
+                if isinstance(args[0], int):
+                    return Integer(**kwargs, options=args)
+                elif isinstance(args[0], str):
+                    return String(**kwargs, options=args)
+            return String(**kwargs) # Fallback
+
         # Type Mapping
-        if base_type is int:
+        if origin is int:
             return Integer(**kwargs)
-        elif base_type is float:
+        elif origin is float:
             return Double(**kwargs)
-        elif base_type is str:
-            # Check for specific formats or length to decide String vs Text vs Char
-            # For now default to String (VARCHAR)
+        elif origin is str:
             return String(**kwargs)
+        elif origin is list or origin is dict:
+            return JSON(**kwargs)
+        elif isinstance(origin, type) and issubclass(origin, dict):
+             return JSON(**kwargs)
         
+        # Fallback for complex unions or other types -> JSON or None?
         return None
 
     @staticmethod
@@ -107,6 +144,7 @@ class SchemaMeta(type):
             
         return kwargs
 
+
 class Schema(dict, metaclass=SchemaMeta):
     """
     Base class for Pytastic-powered SuperSQL schemas.
@@ -123,5 +161,12 @@ class Schema(dict, metaclass=SchemaMeta):
         return list(cls.fields_cache.values())
         
     def validate(self):
+        # 1. Pytastic Validation
         _vx.validate(self.__class__, self)
-
+        
+        # 2. SuperSQL Descriptor Validation (Fallback/Extension)
+        for name, descriptor in self.fields_cache.items():
+            if name in self:
+                value = self[name]
+                if hasattr(descriptor, 'validate'):
+                     descriptor.validate(value)

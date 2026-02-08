@@ -67,6 +67,13 @@ class Base(object):
         self.unique = kwargs.get("unique")
         self.textsearch = kwargs.get("textsearch")
         self.options = kwargs.get("options")
+        
+        # Validation constraints
+        self.minimum = kwargs.get("minimum")
+        self.maximum = kwargs.get("maximum")
+        self.min_length = kwargs.get("min_length")
+        self.max_length = kwargs.get("max_length")
+        
         self.value = None
         self.is_not_a_wedding_guest = True
 
@@ -78,6 +85,30 @@ class Base(object):
         # used to maintain definition order of table schema
         # when SELECT is used/called
         self._timestamp = clock.now().timestamp()
+
+    def validate(self, value, instance=None):
+        from supersql.errors import ValidationError
+        
+        if value is None:
+            if self.required:
+                raise ValidationError(f"{self._name} is required")
+            return
+
+        if self.min_length is not None and hasattr(value, '__len__'):
+            if len(value) < self.min_length:
+                raise ValidationError(f"{self._name}: Min length {self.min_length}")
+        
+        if self.max_length is not None and hasattr(value, '__len__'):
+            if len(value) > self.max_length:
+                raise ValidationError(f"{self._name}: Max length {self.max_length}")
+                
+        if self.minimum is not None:
+            if value < self.minimum:
+                raise ValidationError(f"{self._name}: Must be >= {self.minimum}")
+                
+        if self.maximum is not None:
+            if value > self.maximum:
+                raise ValidationError(f"{self._name}: Must be <= {self.maximum}")
 
     def __get__(self, instance, metadata):
         self._imeta = instance
@@ -91,15 +122,12 @@ class Base(object):
 
         # Check if _imeta has _alias (it might be a class or instance)
         if hasattr(this, '_imeta') and getattr(this._imeta, '_alias', None):
-             this._print = f"{this._imeta._alias}.{this._name}"
-        else:
-             this._print = f"{this._name}"
+            this._print = f"{this._imeta._alias}.{this._name}"
+        else: this._print = f"{this._name}"
         return this
 
     def __set__(self, instance, value):
-
-        if self.unique:
-            instance.uniques = self._name, value
+        if self.unique: instance.uniques = self._name, value
         self.validate(value, instance)
         self.value = value
         instance.__mutated__ = True
@@ -209,8 +237,6 @@ class Base(object):
         elif isinstance(value, str):
             return f"'{value}'"
 
-    def validate(self, value, instance=None):
-        pass
 
     def AS(self, *args, **kwargs):
         self._alias = args[0]
