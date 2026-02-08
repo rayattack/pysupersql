@@ -1,32 +1,81 @@
 
-```py
+# Connecting to Databases
+
+Examples of connecting to different database vendors with SuperSQL.
+
+## PostgreSQL
+
+```python
 from supersql import Query
 
-q = Query(
-    vendor="postgres",
-    user="postgres",
-    password="postgres",
-    server="localhost:5432",
-)
+# Basic connection
+q = Query("postgres",
+          user="postgres",
+          password="postgres",
+          host="localhost",
+          port=5432,
+          database="mydb")
 
-# or
+# Using environment variables
+import os
+q = Query("postgres",
+          user=os.getenv("DB_USER"),
+          password=os.getenv("DB_PASSWORD"),
+          host=os.getenv("DB_HOST", "localhost"),
+          database=os.getenv("DB_NAME"))
+```
 
-q = Query(
-    user="postgres",
-    password="password",
-    server="postgresql:=localhost:5432/mydatabase"
-)
+## MySQL
 
-# or
-q = Query("postgresql:=localhost:5432/mydatabase(username:=password)")
+```python
+# MySQL connection
+q = Query("mysql",
+          user="root",
+          password="password",
+          host="localhost",
+          port=3306,
+          database="mydb")
+```
 
-# You can also change the gopher delimiter
-# to whatever you want
-q = Query("postgresql:::localhost/mydatabase(username:::mypassword)", esc=":::")
+## SQL Server
 
+```python
+# SQL Server connection
+q = Query("mssql",
+          user="sa",
+          password="password",
+          host="localhost",
+          port=1433,
+          database="mydb")
+```
 
-host = "postgresql:=localhost:5432/mydatabase"
+## SQLite
 
-# Is this still required? Not sure
-prompt_for_password = Query(user="postgres", prompt_password=True, host=host)
+```python
+# SQLite file database
+q = Query("sqlite", database="mydb.sqlite")
+
+# In-memory database
+q = Query("sqlite", database=":memory:")
+```
+
+## Using Async Context Manager
+
+```python
+async def query_users():
+    async with q as query:
+        results = await query.SELECT("*").FROM("users").run()
+        return results
+```
+
+## Error Handling
+
+```python
+from supersql.errors import VendorDependencyError
+
+try:
+    q = Query("postgres", user="user", password="pass")
+except VendorDependencyError as e:
+    print(f"Missing dependencies: {e}")
+    # Install with: pip install supersql[postgres]
 ```

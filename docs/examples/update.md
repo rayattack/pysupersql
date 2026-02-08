@@ -1,28 +1,29 @@
 
-```py
+# UPDATE Examples
 
-from supersql import Query, Schema
+Examples of updating data with SuperSQL.
+
+```python
+from supersql import Query, Table
 from supersql import (
     Integer,
     String,
     UUID
 )
 
+# Create connection
+query = Query("postgres",
+              host="localhost",
+              port=5432,
+              database="northwind",
+              user="postgres",
+              password="postgres")
 
-
-query = Query(
-    vendor="postgres",
-    host="localhost:5432",
-    database="northwind",
-    user="postgres",
-    password="postgres"
-)
-
-
-class Movies(Schema):
+# Define table schema
+class Movies(Table):
     identifier = UUID()
     name = String()
-    rating = Integer(datatype='integer')
+    rating = Integer()
 
 movies = Movies()
 

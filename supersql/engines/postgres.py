@@ -1,11 +1,19 @@
 import typing
 import inspect
+import logging
 from functools import wraps
 from typing import TYPE_CHECKING
 
+from supersql.engines.connection import IConnection, IEngine
+from supersql.utils.vendor_deps import validate_vendor_dependencies
+
+# Validate dependencies at module level
+validate_vendor_dependencies("postgres")
+
+# Import PostgreSQL dependencies after validation
 import asyncpg
 
-from supersql.engines.connection import IConnection, IEngine
+logger = logging.getLogger('supersql.engines.postgres')
 
 
 if(TYPE_CHECKING):
@@ -22,7 +30,6 @@ def connectable(f):
     if inspect.iscoroutinefunction(f):
         @wraps(f)
         async def wrapper(*args, **kwargs):
-            lettab = args[0]
             assert args[0]._connection is None, CONNECTED_MESSAGE
             response = await f(*args, **kwargs)
             return response
@@ -56,6 +63,10 @@ class EngineConstructorArgs(typing.TypedDict):
     database: str
     host: str
     use_ssl: bool
+    pool_min_size: int
+    pool_max_size: int
+    pool_timeout: int
+    pool_recycle: int
 
 
 class Engine(IEngine):
@@ -66,9 +77,48 @@ class Engine(IEngine):
 
     async def connect(self) -> None:
         assert self.pool is None, CONNECTED_MESSAGE
-        self.pool = await asyncpg.create_pool(**self._config)
+        logger.debug("Creating PostgreSQL connection pool")
+        
+        # Extract pool arguments
+        pool_min_size = self._config.get('pool_min_size', 10)
+        pool_max_size = self._config.get('pool_max_size', 10)
+        pool_timeout = self._config.get('pool_timeout', 60)
+        pool_recycle = self._config.get('pool_recycle', -1)
+        
+        # Prepare connection arguments (exclude pool args)
+        connect_kwargs = {k: v for k, v in self._config.items() if not k.startswith('pool_')}
+        
+        # asyncpg uses min_size, max_size, timeout, max_inactive_connection_lifetime
+        pool_kwargs = {
+            'min_size': pool_min_size,
+            'max_size': pool_max_size,
+            'timeout': pool_timeout,
+        }
+        
+        if pool_recycle > 0:
+            pool_kwargs['max_inactive_connection_lifetime'] = pool_recycle
+
+        try:
+            self.pool = await asyncpg.create_pool(**connect_kwargs, **pool_kwargs)
+            logger.debug("PostgreSQL connection pool created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create PostgreSQL connection pool: {e}")
+            raise
 
     async def disconnect(self) -> None:
         assert self.pool is not None, DISCONNECTED_MESSAGE
-        await self.pool.close()
-        self.pool = None
+        logger.debug("Closing PostgreSQL connection pool")
+        try:
+            await self.pool.close()
+            self.pool = None
+            logger.debug("PostgreSQL connection pool closed")
+        except Exception as e:
+            logger.error(f"Failed to close PostgreSQL connection pool: {e}")
+            raise
+
+    @property
+    def parameter_placeholder(self) -> str:
+        return "$%d"
+
+    def connection(self) -> "Connection":
+        return Connection(self.pool)

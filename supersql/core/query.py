@@ -1,10 +1,13 @@
-from asyncio import run
+from asyncio import run as asyncio_run
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from threading import Event
 from numbers import Number
+import copy
 
-from typing import Union
+
+import logging
+from typing import Union, Optional
 
 from supersql.errors import (
     ArgumentError,
@@ -16,6 +19,10 @@ from supersql.errors import (
 from .database import Database
 from .table import Table
 from .results import Results
+from .state import QueryState
+from .compiler import PostgresCompiler, MySQLCompiler, SQLiteCompiler
+
+logger = logging.getLogger('supersql.core.query')
 
 _loop = None
 
@@ -57,7 +64,22 @@ class Query(object):
     generating engine specific SQL strings.
     """
 
-    def __init__(self, engine, dsn=None, user=None, password=None, host=None, port=None, database=None, silent=True, unsafe=False):
+    def __init__(
+        self, 
+        engine: str, 
+        dsn: Optional[str] = None, 
+        user: Optional[str] = None, 
+        password: Optional[str] = None, 
+        host: Optional[str] = None, 
+        port: Optional[int] = None, 
+        database: Optional[str] = None, 
+        silent: bool = True, 
+        unsafe: bool = False,
+        pool_min_size: int = 10,
+        pool_max_size: int = 10,
+        pool_timeout: int = 60,
+        pool_recycle: int = -1
+    ):
         """Query constructor
         Sets up a query engine for use by saving initialization
         parameters internally for use in connecting to the backing
@@ -83,18 +105,68 @@ class Query(object):
             supersql check for an error in your prepared query before even
             sending it out to the database engine?
             Defaults to `True` i.e. do not check for errors
+        
+        pool_min_size {int | optional}:
+            Minimum connections to keep in the pool.
+            Defaults to 10
+        
+        pool_max_size {int | optional}:
+            Maximum connections to keep in the pool.
+            Defaults to 10
+            
+        pool_timeout {int | optional}:
+            Timeout in seconds for acquiring a connection from the pool.
+            Defaults to 60
+            
+        pool_recycle {int | optional}:
+            Number of seconds after which a connection is automatically
+            recycled. -1 means no recycling.
+            Defaults to -1
         """
-        if engine not in SUPPORTED_ENGINES:
-            raise NotImplementedError(f"{engine} is not a supersql supported engine")
-        self._engine = engine
-        self._dsn = dsn
-        self._user = user
-        self._password = password
-        self._host = host
-        self._port = port
-        self._database = database
+        # Handle connection string format: postgres://user:password@host:port/database
+        self._pool_min_size = pool_min_size
+        self._pool_max_size = pool_max_size
+        self._pool_timeout = pool_timeout
+        self._pool_recycle = pool_recycle
+
+        if engine and '://' in str(engine):
+            parsed = self._parse_connection_string(engine)
+            self._engine = parsed['engine']
+            self._dsn = engine
+            self._user = user or parsed.get('user')
+            self._password = password or parsed.get('password')
+            self._host = host or parsed.get('host')
+            self._port = port or parsed.get('port')
+            self._database = database or parsed.get('database')
+        else:
+            if engine not in SUPPORTED_ENGINES:
+                raise NotImplementedError(f"{engine} is not a supersql supported engine")
+            self._engine = engine
+            self._dsn = dsn
+            self._user = user
+            self._password = password
+            self._host = host
+            self._port = port
+            self._database = database
         self._silent = silent
-        self._sql = []
+        # self._sql = []  # DEPRECATED: Replaced by QueryState
+        self._state = QueryState()
+        
+        # Initialize Compiler based on engine
+        if self._engine in ('postgres', 'postgresql'):
+             self._compiler = PostgresCompiler()
+        elif self._engine == 'mysql':
+             self._compiler = MySQLCompiler()
+        elif self._engine == 'sqlite':
+             self._compiler = SQLiteCompiler()
+        else:
+             # Fallback or error? For now default to Postgres or raise
+             # raise NotImplementedError(f"Compiler for {self._engine} not implemented")
+             # Use Postgres as default just to not crash, but this is dangerous
+             self._compiler = PostgresCompiler() 
+             
+        self._sql = [] # Keep this for backward compatibility if any method accesses it directly
+                       # But we should try to move away from it.
 
         self._pristine = True
         self._disparity = 0  # how many tables is this query for?
@@ -102,6 +174,7 @@ class Query(object):
         self._callstack = []
 
         self._unsafe = unsafe
+
         self._args = []
 
         self._consequence = DQL  # we default to reads
@@ -113,8 +186,69 @@ class Query(object):
         self._pause_cloning = False
         self._t_ = ''  # used to determine if to put a semi-colon and space before commands
 
-        _params = {"host": host, "port": port, "user": user, "password": password, "database": database}
+        _params = {
+            "host": self._host, 
+            "port": self._port, 
+            "user": self._user, 
+            "password": self._password, 
+            "database": self._database,
+            "pool_min_size": pool_min_size,
+            "pool_max_size": pool_max_size,
+            "pool_timeout": pool_timeout,
+            "pool_recycle": pool_recycle
+        }
         self._db = Database(self, **_params)
+
+    def _parse_connection_string(self, connection_string: str) -> dict:
+        """
+        Parse a connection string like postgres://user:password@host:port/database
+
+        Args:
+            connection_string: Connection string to parse
+
+        Returns:
+            Dictionary with parsed connection parameters
+        """
+        import re
+
+        if connection_string.startswith('sqlite:'):
+             # Handle sqlite specially as it may not strictly follow user:pass@host:port format
+             # e.g supersql currently receives sqlite:///path/to/db (absolute) or sqlite://path/to/db (relative)
+             # We just take everything after sqlite:// as the database path/url
+             path_match = re.match(r'^sqlite://(.*)$', connection_string)
+             if path_match:
+                 return {
+                     'engine': 'sqlite',
+                     'database': path_match.group(1),
+                     'host': None,
+                     'port': None,
+                     'user': None,
+                     'password': None
+                 }
+
+        # Pattern to match: engine://user:password@host:port/database
+        pattern = r'^(\w+)://(?:([^:]+)(?::([^@]+))?@)?([^:/]+)(?::(\d+))?/(.+)$'
+        match = re.match(pattern, connection_string)
+
+        if not match:
+            raise ValueError(f"Invalid connection string format: {connection_string}")
+
+        engine, user, password, host, port, database = match.groups()
+
+        # Map postgresql to postgres for compatibility
+        if engine == 'postgresql':
+            engine = 'postgres'
+
+        return {
+            'engine': engine,
+            'user': user,
+            'password': password,
+            'host': host,
+            'port': int(port) if port else None,
+            'database': database
+        }
+
+
 
     def _clone(self) -> "Query":
         """
@@ -125,7 +259,7 @@ class Query(object):
         # i.e. it is possible to declare a global query object with connection
         # configuration and reuse without fear of internal state corruption
         """
-        return type(self)(
+        new_query = type(self)(
             engine=self._engine,
             dsn=self._dsn,
             user=self._user,
@@ -134,8 +268,42 @@ class Query(object):
             silent=self._silent,
             port=self._port,
             database=self._database,
-            unsafe=self._unsafe
-        ) if not self._pause_cloning else self
+            unsafe=self._unsafe,
+            pool_min_size=self._pool_min_size,
+            pool_max_size=self._pool_max_size,
+            pool_timeout=self._pool_timeout,
+            pool_recycle=self._pool_recycle
+        )
+        
+        if not self._pause_cloning:
+            new_query._state = copy.deepcopy(self._state)
+            # Copy other internal state if needed
+            new_query._tablenames = self._tablenames.copy()
+            new_query._orphans = self._orphans.copy()
+            new_query._callstack = self._callstack.copy()
+            new_query._from = self._from.copy()
+            new_query._args = self._args.copy()
+            # _sql is deprecated but if populated we might copy it? No, we are moving away.
+            return new_query
+            
+        return self
+
+    def _chain_state(self):
+        """
+        If the current state represents a complete statement,
+        archive it into the chain and start a fresh state.
+        """
+        s = self._state
+        # Check if state is modified/dirty
+        is_dirty = (s.statement_type != 'SELECT') or (len(s.selects) > 0) or (len(s.from_sources) > 0)
+        
+        if is_dirty:
+            old_state = self._state
+            new_state = QueryState()
+            # Preserve connection-level state if needed? 
+            # No, semantic state is reset.
+            new_state.chain = old_state.chain + [old_state]
+            self._state = new_state
 
     def _conditionator(self, condition):
         if isinstance(condition, str):
@@ -159,11 +327,14 @@ class Query(object):
         """
         Get the database for inspection or operation
         """
-        return self._database
+        return self._db
 
-    def execute(self, *args, **kwargs):
+    def execute(self, *args, **kwargs) -> Results:
         """
-        Flushes the SQL command to the server for execution
+        Flushes the SQL command to the server for execution (synchronous).
+
+        This is a synchronous wrapper around the async `run()` method.
+        Use this when you need synchronous database access.
 
         ..raises:
         {ConnectionError} On failed connection attempts to the database engine
@@ -174,10 +345,11 @@ class Query(object):
         {CommandError} When the database server could not execute the command
             sent from preparation of your query. Wraps the message of the
             database server internally for easy debugging.
+        
+        Returns:
+            Results: A Results object containing the query results
         """
-        async def wait():
-            pass
-        pass
+        return asyncio_run(self.run(*args, **kwargs))
 
     def get_tablename(self, table: Union[str, Table, None]) -> str:
         """
@@ -203,12 +375,19 @@ class Query(object):
         ..return {str}  String representation of the SQL command to be sent
             to the database server if `execute` method is called.
         """
-        return "".join(self._sql)
+        # If we have state, compile it
+        return self._compiler.compile(self._state)
+        # legacy fallback: return "".join(self._sql)
     
     async def run(self, *args, **kwargs) -> Results:
-        # probably want to append `;` f'{self._sql};' here?
         async with self._db as db:
-            results = await db.executes(self)
+            # We pass self, and db.execute calls self.print() usually?
+            # Or does db.execute expect a string?
+            # In database.py: 
+            # async def execute(self, query: Union['Query', str], ...)
+            #    if isinstance(query, Query): sql = query.print()
+            # So updating print() is enough!
+            results = await db.execute(self)
             return Results(results)
 
     async def sql(self, statement: str):
@@ -225,9 +404,9 @@ class Query(object):
             raise SQLError(msg)
     
     def AND(self, condition):
-        self._sql.append(_AND)
-        sql_snippet = self._conditionator(condition)
-        self._sql.append(sql_snippet)
+        # self._sql.append(_AND)
+        snippet = self._conditionator(condition).strip()
+        self._state.wheres.append(snippet)
         return self
 
     def AS(self, alias):
@@ -242,13 +421,18 @@ class Query(object):
         this._t_ = '; '
         this._pause_cloning = True
         this._callstack.append('BEGIN')
-        this._sql.append('BEGIN')
+        
+        this._chain_state()
+        this._state.statement_type = 'BEGIN'
+        # this._sql.append('BEGIN')
         return this
     
     def COMMIT(self):
         self._pause_cloning = False
         self._callstack.append('COMMIT')
-        self._sql.append(f'{self._t_}COMMIT;')
+        
+        self._chain_state()
+        self._state.statement_type = 'COMMIT'
         self._t_ = ''  # reset here not necessary but hey...
         return self
 
@@ -258,14 +442,20 @@ class Query(object):
     def DELETE_FROM(self, table):
         this = self._clone()
         this._callstack.append(DELETE)
+        
+        this._chain_state()
+        this._state.statement_type = 'DELETE'
+        
         if isinstance(table, str):
             tablename = table
         elif isinstance(table, Table):
             tablename = table.__tn__()
         
         this._tablenames.add(tablename)
-        sqlstatement = f'{this._t_}DELETE FROM {tablename}'
-        this._sql.append(sqlstatement)
+        this._state.from_sources.append(tablename)
+        
+        # sqlstatement = f'{this._t_}DELETE FROM {tablename}'
+        # this._sql.append(sqlstatement)
         return this
 
     def FETCH(self, *args):
@@ -273,21 +463,18 @@ class Query(object):
 
     def FROM(self, *args, **kwargs):
         """
-        Adds the left and right spaced _FROM_ constant to the pseudo call stack first
-        then evaluates the argument(s) passed in for type
-        to resolve the tablename and alias i.e. _from_ `abc as alias, bdd as alias`
-        or _from_ `abc` before appending that to the _sql array
+        Adds sources to the FROM clause.
         """
         self._callstack.append(_FROM_)
 
         num_of_args = len(args)
         num_of_tables = len(self._tablenames)
-        # msg = f"Found different tables in SELECT statement but only 1 command received in FROM"
         msg = f"tables:{num_of_tables}, args:{num_of_args}"
 
         if num_of_args != num_of_tables and num_of_tables > 0:
             raise MissingArgumentError(msg)
 
+        froms_to_add = []
         for source in args:
             has_alias = None
             if isinstance(source, str):
@@ -295,22 +482,44 @@ class Query(object):
                 _q = source
             elif isinstance(source, Query):
                 _a = source._alias
+                # Nested Query! 
+                # For string based compiler, we probably want the string rep ??
+                # Or store the Query object? QueryState allows Any.
+                # Let's store the string for now to match legacy behavior
                 _q = f"({source.print()})"
             elif isinstance(source, Table):
                 _a = source._alias
                 _q = source.__tn__()
 
             _from = f"{_q} AS {_a}" if _a and num_of_tables > 1 else f"{_q}"
-            self._from.append(_from)
+            froms_to_add.append(_from)
 
-        _sql = ", ".join(
-            [f"{table}" for table in self._from]
-        ) if len(self._from) > 1 else "".join(table for table in self._from)
-        self._sql.extend([_FROM_, _sql])
+        self._state.from_sources.extend(froms_to_add)
+        
+        # Legacy support
+        self._from.extend(froms_to_add)
+        # self._sql ... not updating anymore
 
         return self
 
     def GROUP_BY(self, *args):
+        """
+        Add GROUP BY clause to the query.
+        """
+        self._callstack.append('GROUP_BY')
+        
+        cols = []
+        for arg in args:
+            if isinstance(arg, str):
+                cols.append(arg)
+            elif isinstance(arg, Table):
+                cols.extend(arg.columns())
+            else:
+                # Column/Field object
+                cols.append(arg._name)
+        
+        if cols:
+            self._state.groups.extend(cols)
         return self
 
     def INSERT_INTO(self, table: str, *args):
@@ -319,24 +528,142 @@ class Query(object):
         this._insert_args = len(args) # only available when insert into is the sql command
         this._callstack.append(INSERT_INTO_)
         this._pause_cloning = True
+        
+        this._chain_state()
+        this._state.statement_type = 'INSERT'
 
         if isinstance(table, Table):
             t = table.__tn__()
         else:
             t = table
+            
+        this._state.insert_table = t
+        
+        # Flatten args
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            cols = list(args[0])
+        else:
+            cols = list(args)
+            
+        this._state.insert_columns = cols
 
-        sql_ = f"{this._t_}{INSERT_INTO_}{t}"
-        sql_ = f"{sql_} ({', '.join(*args)})" if len(args) > 0 else sql_
-        this._sql.append(sql_)
+        # sql_ = f"{this._t_}{INSERT_INTO_}{t}"
+        # sql_ = f"{sql_} ({', '.join(*args)})" if len(args) > 0 else sql_
+        # this._sql.append(sql_)
         return this
 
-    def JOIN(self, *args):
-        return self
+    def JOIN(self, table, on=None, join_type='INNER'):
+        """
+        Add a JOIN clause to the query.
 
-    def LIMIT(self, *args):
+        Args:
+            table: Table name (str) or Table object to join
+            on: Join condition (str or column comparison)
+            join_type: Type of join - 'INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS'
+        
+        Returns:
+            Query: self for method chaining
+        """
+        self._callstack.append('JOIN')
+        
+        # Get table name
+        if isinstance(table, Table):
+            tablename = table.__tn__()
+            alias = table._alias
+        elif isinstance(table, str):
+            tablename = table
+            alias = None
+        else:
+            raise ArgumentError(f"JOIN expects a table name or Table object, got {type(table)}")
+        
+        # Build JOIN clause
+        join_sql = f"{join_type} JOIN {tablename}"
+        if alias:
+            join_sql += f" AS {alias}"
+        
+        # Add ON condition if provided
+        if on is not None:
+            if isinstance(on, str):
+                join_sql += f" ON {on}"
+            else:
+                # Column comparison object
+                join_sql += f" ON {on.print(self)}"
+        
+
+        
+        self._state.joins.append(join_sql)
+        # self._sql.append(join_sql)
+        return self
+    
+    def LEFT_JOIN(self, table, on=None):
+        """Convenience method for LEFT JOIN."""
+        return self.JOIN(table, on, join_type='LEFT')
+    
+    def RIGHT_JOIN(self, table, on=None):
+        """Convenience method for RIGHT JOIN."""
+        return self.JOIN(table, on, join_type='RIGHT')
+    
+    def FULL_JOIN(self, table, on=None):
+        """Convenience method for FULL OUTER JOIN."""
+        return self.JOIN(table, on, join_type='FULL OUTER')
+    
+    def CROSS_JOIN(self, table):
+        """Convenience method for CROSS JOIN (no ON clause)."""
+        return self.JOIN(table, on=None, join_type='CROSS')
+
+    def LIMIT(self, count, offset=None):
+        """
+        Add LIMIT clause to the query.
+
+        Args:
+            count: Maximum number of rows to return
+            offset: Optional number of rows to skip
+        
+        Returns:
+            Query: self for method chaining
+        """
+        self._callstack.append('LIMIT')
+        
+        if offset is not None: self._sql.append(f" LIMIT {count} OFFSET {offset}")
+        else: self._sql.append(f" LIMIT {count}")
         return self
 
     def ORDER_BY(self, *args):
+        """
+        Add ORDER BY clause to the query.
+
+        Use negative prefix (-column) for descending order.
+        
+        Args:
+            *args: Column names, column objects, or negated columns for DESC
+        
+        Returns:
+            Query: self for method chaining
+        
+        Example:
+            query.ORDER_BY('name')  # ORDER BY name ASC
+            query.ORDER_BY('-age')  # ORDER BY age DESC (string with - prefix)
+        """
+        self._callstack.append('ORDER_BY')
+        
+        order_parts = []
+        for arg in args:
+            if isinstance(arg, str):
+                if arg.startswith('-'):
+                    order_parts.append(f"{arg[1:]} DESC")
+                else:
+                    order_parts.append(f"{arg} ASC")
+            elif isinstance(arg, Table):
+                # Order by all columns in table
+                for col in arg.columns():
+                    order_parts.append(f"{col} ASC")
+            else:
+                # Column/Field object
+                order_parts.append(f"{arg._name} ASC")
+        
+        if order_parts:
+            self._state.orders.extend(order_parts)
+            # self._sql.append(f" ORDER BY {', '.join(order_parts)}")
         return self
 
     def RETURNING(self, *args):
@@ -354,18 +681,29 @@ class Query(object):
 
         parsed = parsed or ['*']
 
-        sql = ", ".join(parsed)
-        self._sql.append(f' RETURNING {sql}')
+        # sql = ", ".join(parsed)
+        # self._sql.append(f' RETURNING {sql}')
+        self._state.returning = parsed
         return self
 
     def SELECT(self, *args):
         this = self._clone()
         this._consequence = DQL
+        # this._callstack.append(SELECT) # Clone copies callstack, so we append to new
         this._callstack.append(SELECT)
+        
+        if this._state.statement_type in ('UPDATE', 'DELETE', 'BEGIN', 'COMMIT'):
+            this._chain_state()
+            this._state.statement_type = 'SELECT'
+        elif this._state.statement_type != 'INSERT':
+            this._state.statement_type = 'SELECT'
 
         num_of_args = len(args)
+        cols = []
+        
         if num_of_args == 0:
-            separator = "*"
+            separator = "*" # Legacy var name
+            cols.append("*")
         elif num_of_args == 1:
             arg = args[0]
             if isinstance(arg, str):
@@ -373,15 +711,14 @@ class Query(object):
                 this._tablenames.add(
                     _table
                 ) if _table else this._orphans.add(arg)
-                separator = arg
+                cols.append(arg)
             elif isinstance(arg, Table):
-                separator = "*"
                 this._tablenames.add(arg.__tn__())
+                cols.append("*") # TODO: Should extend with all cols? Existing code used "*"
             else:
-                separator = arg._name
                 this._tablenames.add(arg._meta.__tn__())
+                cols.append(arg._name)
         else:
-            cols = []
             unique_tablenames = set([this.get_tablename(table) for table in args])
             is_heterogeneous = len(unique_tablenames) > 1
 
@@ -389,18 +726,16 @@ class Query(object):
                 if isinstance(member, str):
                     _table = this.get_tablename(member)
                     this._tablenames.add(_table) if _table else None
-
                     cols.append(member)
                 elif isinstance(member, Table):
-                    # activate alias on tables if is_heterogeneous i.e.
-                    # more than one table seen in select
+                    # activate alias on tables if is_heterogeneous
                     if is_heterogeneous:
                         member.AS(member._alias if member._alias else member.__tn__())
 
                     this._tablenames.add(member.__tn__())
                     cols.extend(member.columns())
                 else:
-                    # Column object i.e. String, Int, Varchar etc.
+                    # Column object
                     alias = member._imeta._alias
                     tablename = member._imeta.__tn__()
                     member._imeta.AS(alias if alias else tablename)
@@ -411,39 +746,49 @@ class Query(object):
                     else:
                         cols.append(f"{member._name}")
 
-            separator = ", ".join(
-                [col for col in cols]
-            )
-
-        # check if insert into is preceding this directly and not values or other command
-        # we can then prevent the insertion of `; ` in such a case as it a continuation command
-        is_inserting = len(this._callstack) > 1 and this._callstack[-2] == INSERT_INTO_
-        _select_statement = f"{' ' if is_inserting else this._t_}SELECT {separator}"
-
-        # if this._pristine:
-        #     this._sql.append(_select_statement)
-        #     this._pristine = False
-        this._sql.append(_select_statement)
+        this._state.selects = cols
         return this
 
     def SET(self, *args):
         self._callstack.append('SET')
 
-        self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args)}')
+        # self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args)}')
+        
+        updates = [ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args]
+        self._state.updates.extend(updates)
         return self
 
-    def UNION(self, *args):...
+    def UNION(self, *args):
+        """UNION is not yet implemented."""
+        raise NotImplementedError(
+            "UNION is not yet implemented in supersql. "
+            "Consider using raw SQL via query.sql() for complex unions."
+        )
 
     def UPDATE(self, table):
         this = self._clone()
         this._consequence = DML
+        
+        this._chain_state()
+        this._state.statement_type = 'UPDATE'
         this._callstack.append(UPDATE_)
-        this._sql.append(f'{this._t_}{UPDATE_}{table if isinstance(table, str) else table.__tn__()} ')
-
+        
+        tn = table if isinstance(table, str) else table.__tn__()
+        this._state.update_table = tn
+        # We need to handle SET clause too, which is not in the original VIEW? 
+        # Ah, update usually followed by SET.
+        # self._state.tables? UPDATE doesn't use FROM usually (standard SQL).
+        
+        # this._sql.append(...)
         return this
 
     def UPSERT(self, *args):
-        return self
+        """UPSERT is not yet implemented (vendor-specific syntax)."""
+        raise NotImplementedError(
+            "UPSERT is not yet implemented in supersql. "
+            "Syntax varies by database vendor (INSERT ... ON CONFLICT for PostgreSQL, "
+            "INSERT ... ON DUPLICATE KEY for MySQL). Use raw SQL via query.sql()."
+        )
 
     def VALUES(self, *args):
         # maybe validate len arg[args] matches the number of args provided if any in insert_into, maybe...
@@ -462,20 +807,14 @@ class Query(object):
             sql = f"({_wparens})"
             vals.append(sql)
 
-        sql = f" {VALUES_}{', '.join(vals)}"
-        self._sql.append(sql)
+        # sql = f" {VALUES_}{', '.join(vals)}"
+        # self._sql.append(sql)
+        self._state.values.extend(vals)
         return self
 
     def WHERE(self, condition):
         """
-        Check if _from was called and call it only if not a
-        DELETE statement in play.
-
-        Add WHERE constant to the pseudo call stack
-
-        Process the `where ` condition by checking if condition is a
-            - string: add as is with spaces as necessary
-            - supersql datatype comparator: calls print() to get the SQL string repr.
+        Check if _from was called and populate wheres.
         """
         if UPDATE_ in self._callstack: pass
         elif _FROM_ not in self._callstack:
@@ -484,12 +823,32 @@ class Query(object):
                 self = self.FROM(*tablenames)
 
         self._callstack.append(WHERE)
-        self._sql.append(f" {WHERE}")
-        sql_snippet = self._conditionator(condition)
-        self._sql.append(sql_snippet)
-
+        
+        # Use conditionator to get the string representation
+        snippet = self._conditionator(condition).strip() # Strip leading space
+        self._state.wheres.append(snippet)
+        
         return self
 
-    def WITHOUT(self, *args):...
+    def WITHOUT(self, *args):
+        """WITHOUT is not yet implemented."""
+        raise NotImplementedError(
+            "WITHOUT is not yet implemented in supersql."
+        )
 
-    def WITH_RECURSIVE(self, *args):...
+    def WITH(self, alias, query):
+        """
+        Add a Common Table Expression (CTE) to the query.
+        
+        Args:
+            alias: The name of the CTE.
+            query: A Query object or SQL string string.
+        """
+        this = self._clone()
+        this._state.ctes.append((alias, query))
+        return this
+             
+        # Add to state
+        this._state.ctes.append((val_alias, query))
+        return this
+

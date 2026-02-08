@@ -14,6 +14,29 @@ class IEngine:
     @abstractmethod
     def connection(self) -> "Connection":...
 
+    @property
+    @abstractmethod
+    def parameter_placeholder(self) -> str:
+        """
+        Returns the parameter placeholder for the database engine.
+        e.g. '$%d' for Postgres, '%s' for MySQL, '?' for SQLite
+        """
+        ...
+
+    @abstractmethod
+    def pool(self) -> Any:
+        """
+        Returns the connection pool object.
+        """
+        ...
+
+    @abstractmethod
+    async def rollback(self) -> None:
+        """
+        Rollback the current transaction.
+        """
+        ...
+
 
 class IConnection:
     @abstractmethod

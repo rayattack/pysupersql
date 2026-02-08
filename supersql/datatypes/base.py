@@ -188,8 +188,15 @@ class Base(object):
         # check if query.unsafe and use that for $1, $2, $3 etc
         if query and query._unsafe:
             return f"{self._print} = {self.python_to_sql_value(self.value)}"
+        
         query._args.append(self.value)
-        return f"{self._print} = ${len(query._args)}"
+        
+        # Get placeholder from engine (postgres=$%d, mysql=%s, sqlite=?)
+        placeholder = query._db._engine.parameter_placeholder
+        if '%d' in placeholder:
+            placeholder = placeholder % len(query._args)
+            
+        return f"{self._print} = {placeholder}"
 
     def python_to_sql_value(self, value):
         if isinstance(value, Number):
