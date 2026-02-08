@@ -1,184 +1,62 @@
-# Supersql : Made For Humans
-In the process of building a SaaS product we investigated database tools for python and found amazing ones
-like SQLAlchemy, PeeWee etc. However if you are like us your thought process might be:
+# SuperSQL: Made For Humans
 
-1. But we don't want to use an ORM
+**SuperSQL** is a Pythonic SQL query builder. It allows you to write SQL queries using the full power of Python objects and types, without the overhead or complexity of an ORM.
 
-2. Why can't we get a low level pythonic, powerful SQL API with with semantic interaction primitives
+## Philosophy: Not an ORM
 
-3. Async and Sync support should be supported
+SuperSQL explicitly rejects the ORM (Object-Relational Mapping) pattern for the "Query Builder" pattern.
+- **ORMs** (like Django, SQLAlchemy ORM) try to map database rows to Python objects with state, often hiding the actual SQL being executed.
+- **SuperSQL** gives you a Python syntax that maps 1:1 to SQL commands.
 
-Supersql checks all those boxes and more. It is a python superset of SQL - allowing you leverage the full power of python to
-write advanced SQL queries.
+You don't call `user.save()`. You write:
+```python
+await query.INSERT(User).VALUES(name="Alice").run()
+```
 
+You don't call `User.objects.filter(...)`. You write:
+```python
+await query.SELECT(User).FROM(User).WHERE(User.age > 18).run()
+```
 
-## Overview
+## Comparisons
 
-There are 4 ways to query your data using SuperSQL
+| Feature | ORM (e.g. Django) | Raw SQL | SuperSQL |
+|---------|-------------------|---------|----------|
+| **Syntax** | Pythonic (Magic) | SQL String | Pythonic (Explicit) |
+| **Type Safety** | High | None | High |
+| **Control** | Low (Generated) | Full | Full |
+| **Refactoring** | Easy | Hard | Easy (IDE support) |
+| **Performance** | Variable (N+1 issues) | Best | Best (Direct SQL) |
 
-- Identifier Interpolation
-- Manually create a _**Table**_ schema
-- Automatically reflect tables from the database
-- Use _`dict`_ and _`list`_ with **variables**
+## Quick Example
 
+```python
+from supersql import Query, Table
 
-&nbsp;
-#### Identifier Interpolation
+# 1. Connect
+db = Query("postgres", database="mydb")
 
-```py
-from os import environ
-from supersql import Query
+# 2. Define Table
+users = Table("users")
 
-user = environ.get('DB_USER')
-pwd = environ.get('DB_PWD')
-dialect = environ.get('DB_ENGINE')
-
-query = Query(vendor=dialect, user=user, password=pwd)
-
-results = query.SELECT(
-    "first_name", "last_name", "email"
+# 3. Query
+# "SELECT name FROM users WHERE age >= 21 AND active = true"
+active_adults = await db.SELECT(
+    users.name
 ).FROM(
-    "employees"
+    users
 ).WHERE(
-    "email = 'someone@example.com'"
+    (users.age >= 21) & (users.active == True)
 ).run()
-
 ```
 
-!!!warning "Magic Literals Are Bad"
-    It is usually not advisable to repeat string or other constants in multiple places across your codebase.
-    If you notice string or literal values repeating more than once consider turning them into constants.
+## Documentation Guide
 
-
-!!!info "Identifiers ONLY"
-    It is advisable to limit use of strings to only identifiers e.g. `column names`, `table names`, `...`
-    and operators `=`, `<>` etc.
-
-
-
-&nbsp;
-#### Manually Create Table Schema
-```py
-from supersql import Table
-from supersql import (
-    Date,
-    Integer,
-    String,
-    UUID,
-)
-
-
-class Employee(Table):
-    identifier = UUID(version=4)
-    first_name = String(required=True)
-    last_name = String(25)
-    email = String(25, required=True, unique=True)
-    age = Integer()
-    created_on = Date()
-
-
-emp = Employee()
-
-
-results = query.SELECT(
-    emp.first_name, emp.last_name, emp.email
-).FROM(
-    emp
-).WHERE(
-    emp.email == 'someone@example.com'
-).execute()  # `execute` fetches all data into memory
-
-```
-
-!!!danger "Run vs Execute"
-    `execute()` fetches all data into memory. Do not use with unsafe queries to large tables
-    e.g. `SELECT * FROM very_large_table`. Use `run()` as it fetches data in chunks and
-    reconnects as necessary to fetch more data.
-
-
-
-&nbsp;
-#### Auto-Reflect Table Schema
-```py
-...
-
-
-tables = query.database("dbname").tables()
-emp = tables.get("employees")
-
-
-results = query.SELECT(
-    emp.first_name, emp.last_name, emp.email
-).FROM(
-    emp
-).WHERE(
-    emp.email == 'someone@example.com'
-).execute()
-
-```
-
-&nbsp;
-
-#### Use Dict &amp; Lists with Variables
-```py
-
-from supersql import Query
-
-query = Query(...)  # connection parameters as required
-
-def example(table, *args, **kwargs)
-    alt_results = query.SELECT(*args).FROM(table).WHERE(**kwargs).run()
-```
-
-
-&nbsp;
-&nbsp;
-## Okay... How about inserting Data?
-
-Adding or inserting data with SuperSQL is just as easy as querying data.
-
-However it is important for you to understand that __SuperSQL is NOT AN ORM__, and that means you
-can't use some magical `table.save()` method to insert data to the database.
-
-That's now how we roll... &nbsp; &nbsp; :smile:
-
-So how then do you insert data? Let's look at some code.
-
-```py
-# borrowing Query and Employee code from above
-...
-
-def insert(**kwargs):
-    result = query.INSERT(
-        emp
-    ).VALUES(
-        **kwargs
-    ).execute()
-
-
-def bulk_insert(*args):
-    result = query.INSERT(
-        emp.first_name,
-        emp.last_name,
-        emp.email
-    ).VALUES(
-        args
-    ).execute()
-
-
-def insert_with_into(*args):
-    # Use of INTO(table) used here is 100% optional but arguably
-    # adds readability
-    results = Query.INSERT(
-        emp.first_name, emp.last_name, emp.email
-    ).INTO(
-        emp
-    ).VALUES(
-        ["John", "Doe", "john.doe@example.net"] if not args else args
-    ).execute()
-
-query.INSERT().INTO().VALUES().WHERE_NOT_EXISTS()
-```
+*   [**Schema Definition**](tables.md): How to define tables/schemas for type safety.
+*   [**Query Builder**](query.md): Comprehensive guide to SELECT, INSERT, UPDATE, DELETE, JOINs, CTEs, etc.
+*   [**Data Types**](datatypes.md): Reference of all supported column types and validation rules.
+*   [**Connections**](connecting.md): Connecting to PostgreSQL, MySQL, SQLite, etc.
+*   [**Reflection**](reflection.md): Introspecting an existing database to generate code.
 
 
 ## Why SuperSQL?
@@ -246,64 +124,95 @@ results = await query.SELECT("u.name", "p.title").FROM("users u").JOIN("posts p 
 !!! warning "SQL Injection Risk"
     When using string-based queries, be careful about SQL injection. Use parameterized queries for user input.
 
-### 2. Table Schema Approach (Recommended)
+### 2. Dynamic Table Approach (Recommended)
 
 ```python
 from supersql import Query, Table
-from supersql import String, Integer, Date, UUID
 
-class Employee(Table):
-    id = UUID(version=4)
-    first_name = String(required=True)
-    last_name = String(50)
-    email = String(100, required=True, unique=True)
-    age = Integer()
-    hire_date = Date()
+# Create dynamic table references
+users = Table("users")
+posts = Table("posts")
 
-# Create query and table instance
+# Create query instance
 query = Query("postgres", user="user", password="pass", database="db")
-emp = Employee()
 
-# Type-safe queries
+# Type-safe queries with dynamic tables
 results = await query.SELECT(
-    emp.first_name, emp.last_name, emp.email
-).FROM(emp).WHERE(
-    emp.age > 18
+    users.first_name, users.last_name, users.email
+).FROM(users).WHERE(
+    users.age > 18
+).run()
+
+# With table aliases
+u = Table("users").AS("u")
+p = Table("posts").AS("p")
+
+results = await query.SELECT(
+    u.name, p.title
+).FROM(u).JOIN(
+    p, on=f"{u.id} = {p.user_id}"
 ).run()
 ```
 
-!!! tip "Type Safety"
-    Using table schemas provides type safety, IDE autocompletion, and prevents many common SQL errors.
+!!! tip "Dynamic Tables"
+    SuperSQL uses dynamic `Table` objects - no need to define schema classes. Access any column using dot notation, and SuperSQL handles the rest with proper identifier quoting.
 
+### 3. Parameterized Queries (Security)
 
-
-### 3. Database Reflection (Auto-Discovery)
+SuperSQL automatically parameterizes your queries to prevent SQL injection:
 
 ```python
-# Automatically discover table schemas from the database
+users = Table("users")
+
+# SECURE: Values are parameterized
+age_threshold = 21  # User input
+results = await query.SELECT(
+    users.name, users.email
+).FROM(users).WHERE(
+    users.age >= age_threshold
+).run()
+
+# Generated SQL: SELECT "users"."name", "users"."email" FROM "users" WHERE "users"."age" >= $1
+# Parameters: [21]
+```
+
+!!! success "SQL Injection Protection"
+    All values in WHERE clauses, INSERT statements, and UPDATE operations are automatically parameterized using engine-specific placeholders (`$1` for PostgreSQL, `?` for SQLite, `%s` for MySQL).
+
+
+### 4. Database Reflection (Auto-Discovery)
+
+```python
+# Automatically discover tables from database
 tables = await query.database("mydb").tables()
-emp = tables.get("employees")
 
-# Use reflected table
+# Or simply create dynamic table references
+employees = Table("employees")
+
+# Use dynamic table
 results = await query.SELECT(
-    emp.first_name, emp.last_name, emp.email
-).FROM(emp).WHERE(
-    emp.email == 'someone@example.com'
+    employees.first_name, employees.last_name, employees.email
+).FROM(employees).WHERE(
+    employees.email == 'someone@example.com'
 ).run()
 ```
 
-### 4. Dynamic Queries with Variables
+### 5. Dynamic Queries with Variables
 
 ```python
-def build_user_query(table, columns, filters):
-    q = query.SELECT(*columns).FROM(table)
-
+def build_user_query(table_name, columns, filters):
+    table = Table(table_name)
+    field_objects = [getattr(table, col) for col in columns]
+    
+    q = query.SELECT(*field_objects).FROM(table)
+    
     for field, value in filters.items():
-        q = q.WHERE(f"{field} = '{value}'")
-
+        # Automatically parameterized - safe from SQL injection
+        q = q.WHERE(getattr(table, field) == value)
+    
     return q
 
-# Usage
+# Usage - all values are safely parameterized
 columns = ["name", "email", "age"]
 filters = {"status": "active", "role": "admin"}
 results = await build_user_query("users", columns, filters).run()
@@ -317,70 +226,73 @@ results = await build_user_query("users", columns, filters).run()
 
 ## Data Modification
 
-SuperSQL supports all standard SQL operations: INSERT, UPDATE, DELETE.
+SuperSQL supports all standard SQL operations: INSERT, UPDATE, DELETE with automatic parameterization.
 
 ### INSERT Operations
 
 ```python
 from supersql import Query, Table
-from supersql import String, Integer
 
-class User(Table):
-    name = String(100)
-    email = String(100)
-    age = Integer()
-
+users = Table("users")
 query = Query("postgres", user="user", password="pass", database="db")
-user = User()
 
-# Insert single record
-await query.INSERT(user).VALUES(
-    name="John Doe",
-    email="john@example.com",
-    age=30
+# Insert single record (values are parameterized)
+await query.INSERT_INTO("users", "name", "email", "age").VALUES(
+    "John Doe", "john@example.com", 30
+).run()
+
+# Or use Field objects for better clarity
+await query.INSERT_INTO(users, users.name, users.email, users.age).VALUES(
+    "John Doe", "john@example.com", 30
 ).run()
 
 # Insert multiple records
-await query.INSERT(user).VALUES([
-    {"name": "Alice", "email": "alice@example.com", "age": 25},
-    {"name": "Bob", "email": "bob@example.com", "age": 35}
-]).run()
-
-# Insert with specific columns
-await query.INSERT(user.name, user.email).VALUES(
-    ("John Doe", "john@example.com"),
-    ("Jane Doe", "jane@example.com")
+await query.INSERT_INTO(users, users.name, users.email, users.age).VALUES(
+    ("Alice", "alice@example.com", 25),
+    ("Bob", "bob@example.com", 35)
 ).run()
+
+# With RETURNING clause
+result = await query.INSERT_INTO(
+    users, users.name, users.email
+).VALUES(
+    "Jane Doe", "jane@example.com"
+).RETURNING(users.id, users.created_at).run()
 ```
 
 ### UPDATE Operations
 
 ```python
-# Update with WHERE clause
-await query.UPDATE(user).SET(
-    name="John Smith",
-    age=31
-).WHERE(user.email == "john@example.com").run()
+# Update with WHERE clause (automatically parameterized)
+await query.UPDATE(users).SET(
+    users.name == "John Smith",
+    users.age == 31
+).WHERE(users.email == "john@example.com").run()
 
-# Conditional update
-await query.UPDATE(user).SET(
-    age=user.age + 1
-).WHERE(user.age < 65).run()
+# Generated SQL: UPDATE "users" SET "name" = $1, "age" = $2 WHERE "users"."email" = $3
+# Parameters: ["John Smith", 31, "john@example.com"]
+
+# Conditional update with user input (safe from SQL injection)
+min_age = 65  # User input
+await query.UPDATE(users).SET(
+    users.status == "senior"
+).WHERE(users.age >= min_age).run()
 ```
 
 ### DELETE Operations
 
 ```python
-# Delete with WHERE clause
-await query.DELETE().FROM(user).WHERE(user.age < 18).run()
+# Delete with WHERE clause (parameterized)
+min_age = 18  # User input - safely parameterized
+await query.DELETE_FROM(users).WHERE(users.age < min_age).run()
 
 # Delete all (be careful!)
-await query.DELETE().FROM(user).run()
+await query.DELETE_FROM(users).run()
 ```
 
 !!! warning "No ORM Magic"
     SuperSQL is NOT an ORM. There's no `user.save()` or `user.delete()` methods.
-    All operations are explicit SQL operations, giving you full control.
+    All operations are explicit SQL operations with automatic parameterization for security.
 
 ## Key Features
 

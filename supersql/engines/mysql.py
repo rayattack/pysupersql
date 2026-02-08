@@ -159,7 +159,6 @@ class Connection(IConnection):
 
     @disconnectable
     async def fetchmany(self, limit: int) -> typing.Any:
-        # Implementation would depend on how the query is stored
         pass
 
     @disconnectable

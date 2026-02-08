@@ -10,7 +10,6 @@ from supersql.utils.vendor_deps import validate_vendor_dependencies
 # Validate dependencies at module level
 validate_vendor_dependencies("postgres")
 
-# Import PostgreSQL dependencies after validation
 import asyncpg
 
 logger = logging.getLogger('supersql.engines.postgres')
@@ -25,7 +24,6 @@ DISCONNECTED_MESSAGE = "Not connection found to database"
 USER, PASSWORD, HOST, PORT, DATABASE = 'user', 'password', 'host', 'port', 'database'
 
 
-# Candidate for refactoring as much of connected and disconnected if Liskov not cared for
 def connectable(f):
     if inspect.iscoroutinefunction(f):
         @wraps(f)
@@ -79,16 +77,13 @@ class Engine(IEngine):
         assert self.pool is None, CONNECTED_MESSAGE
         logger.debug("Creating PostgreSQL connection pool")
         
-        # Extract pool arguments
         pool_min_size = self._config.get('pool_min_size', 10)
         pool_max_size = self._config.get('pool_max_size', 10)
         pool_timeout = self._config.get('pool_timeout', 60)
         pool_recycle = self._config.get('pool_recycle', -1)
         
-        # Prepare connection arguments (exclude pool args)
         connect_kwargs = {k: v for k, v in self._config.items() if not k.startswith('pool_')}
         
-        # asyncpg uses min_size, max_size, timeout, max_inactive_connection_lifetime
         pool_kwargs = {
             'min_size': pool_min_size,
             'max_size': pool_max_size,

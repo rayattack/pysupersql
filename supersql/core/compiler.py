@@ -86,8 +86,29 @@ class SQLCompiler(ABC):
             
         return "\n".join(part for part in sql_parts if part), parameters
 
+    def _compile_conditions(self, conditions: List[Any]) -> tuple[str, list]:
+        """
+        Compile a list of WHERE conditions (strings or Condition objects).
+        Returns (sql_string, parameters).
+        """
+        sql_parts = []
+        params = []
+        
+        for cond in conditions:
+            if hasattr(cond, 'compile'):
+                sql, p = cond.compile(self)
+                sql_parts.append(sql)
+                params.extend(p)
+            else:
+                s = str(cond).strip()
+                if s:
+                    sql_parts.append(s)
+                    
+        return " AND ".join(sql_parts), params
+
     def _compile_select(self, state: QueryState) -> tuple[str, list]:
         parts = []
+        parameters = []
         
         # SELECT
         selects = state.selects or ['*']
@@ -106,8 +127,10 @@ class SQLCompiler(ABC):
             
         # WHERE
         if state.wheres:
-            where_str = " AND ".join(str(w).strip() for w in state.wheres)
-            parts.append(f"WHERE {where_str}")
+            where_sql, where_params = self._compile_conditions(state.wheres)
+            if where_sql:
+                parts.append(f"WHERE {where_sql}")
+                parameters.extend(where_params)
             
         # GROUP BY
         if state.groups:
@@ -126,7 +149,7 @@ class SQLCompiler(ABC):
              parts.append(f"OFFSET {state.offset}")
         if state.returning:
             parts.append(f"RETURNING {', '.join(state.returning)}")
-        return " ".join(parts), []
+        return " ".join(parts), parameters
 
     def _compile_insert(self, state: QueryState) -> tuple[str, list]:
         parts = []
@@ -162,18 +185,31 @@ class SQLCompiler(ABC):
 
     def _compile_update(self, state: QueryState) -> tuple[str, list]:
         parts = []
+        parameters = []
         parts.append(f"UPDATE {state.update_table}")
         
         if state.updates:
-             parts.append(f"SET {', '.join(state.updates)}")
+             compiled_updates = []
+             for u in state.updates:
+                 if hasattr(u, 'compile'):
+                     sql, params = u.compile(self)
+                     compiled_updates.append(sql)
+                     parameters.extend(params)
+                 else:
+                     compiled_updates.append(str(u))
+             
+             parts.append(f"SET {', '.join(compiled_updates)}")
         
         if state.wheres:
-             parts.append(f"WHERE {' AND '.join(w.strip() for w in state.wheres)}")
+             where_sql, where_params = self._compile_conditions(state.wheres)
+             if where_sql:
+                 parts.append(f"WHERE {where_sql}")
+                 parameters.extend(where_params)
              
         if state.returning:
              parts.append(f"RETURNING {', '.join(state.returning)}")
              
-        return " ".join(parts), []
+        return " ".join(parts), parameters
 
     def _compile_delete(self, state: QueryState) -> tuple[str, list]:
         parts = []
@@ -186,14 +222,16 @@ class SQLCompiler(ABC):
              parts.append(state.delete_table)
              
         if state.wheres:
-            where_str = " AND ".join(str(w).strip() for w in state.wheres)
-            parts.append(f"WHERE {where_str}")
+            where_sql, where_params = self._compile_conditions(state.wheres)
+            if where_sql:
+                parts.append(f"WHERE {where_sql}")
+                parameters.extend(where_params)
             
         if state.returning:
             ret = ", ".join(state.returning)
             parts.append(f"RETURNING {ret}")
             
-        return " ".join(parts), []
+        return " ".join(parts), parameters
 
 class PostgresCompiler(SQLCompiler):
     @property

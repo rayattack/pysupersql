@@ -1,128 +1,111 @@
-# Supersql Examples
+# Examples
 
-Supersql provides a fluid, pythonic syntax for building complex SQL queries. The new AST-based engine allows for robust query construction, including support for Common Table Expressions (CTEs) and complex joins.
+This section contains common patterns and examples for using SuperSQL.
 
-## E-Commerce Power Examples
+# Examples
 
-Here are some examples demonstrating how to use Supersql in an e-commerce context, dealing with Products, Carts, and Purchases.
+This section contains common patterns and examples for using SuperSQL.
 
-### 1. Simple Product Fetching
-
-Retrieve active products with a price greater than 100, ordered by price.
+## 1. Defining Tables
 
 ```python
-from supersql import Query, Table, Integer, String, Boolean, Float
+from supersql import Table
 
-class Products(Table):
-    id = Integer()
-    name = String()
-    price = Float()
-    active = Boolean()
-
-q = Query('postgres://user:pass@localhost:5432/db')
-p = Products()
-
-query = q.SELECT(p.name, p.price).FROM(p) \
-         .WHERE(p.active == True) \
-         .WHERE(p.price > 100) \
-         .ORDER_BY('-price') \
-         .LIMIT(10)
-
-# SQL: SELECT products.name, products.price FROM products WHERE products.active = true AND products.price > 100 ORDER BY price DESC LIMIT 10
-results = query.execute()
+# Define tables dynamically
+users = Table("users")
+posts = Table("posts")
 ```
 
-### 2. Shopping Cart Analysis with Joins
+## 2. Basic CRUD
 
-Find all items in a specific user's cart, including product details.
-
+### Create (INSERT)
 ```python
-class Carts(Table):
-    id = Integer()
-    user_id = Integer()
+# Insert one
+await query.INSERT(users).VALUES(email="alice@example.com").run()
 
-class CartItems(Table):
-    id = Integer()
-    cart_id = Integer()
-    product_id = Integer()
-    quantity = Integer()
-
-u_id = 123
-c = Carts()
-ci = CartItems()
-p = Products()
-
-# Cartesian join power with explicit ON
-query = q.SELECT(p.name, ci.quantity, p.price) \
-         .FROM(c) \
-         .JOIN(ci, on=c.id == ci.cart_id) \
-         .JOIN(p, on=ci.product_id == p.id) \
-         .WHERE(c.user_id == u_id)
-
-# Execute
-data = query.execute()
+# Insert many
+data = [
+    {"email": "bob@example.com", "is_active": True},
+    {"email": "charlie@example.com", "is_active": False},
+]
+await query.INSERT(users).VALUES(data).run()
 ```
 
-### 3. Advanced Analytics Using CTEs (Common Table Expressions)
-
-Use CTEs to calculate the total purchases per user, then select high-value customers.
-
+### Read (SELECT)
 ```python
-class Purchases(Table):
-    id = Integer()
-    user_id = Integer()
-    total_amount = Float()
-    created_at = String() # Simplified date
+# Select all active users
+users_list = await query.SELECT(users).FROM(users).WHERE(users.is_active == True).run()
 
-pur = Purchases()
-
-# Define the CTE: Aggregated sales per user
-user_totals = q.SELECT(pur.user_id, 'SUM(total_amount) as lifetime_value') \
-               .FROM(pur) \
-               .GROUP_BY(pur.user_id)
-
-# Use the CTE in the main query
-# WITH user_stats AS (SELECT ...) SELECT * FROM user_stats WHERE lifetime_value > 1000
-query = q.WITH('user_stats', user_totals) \
-         .SELECT('*') \
-         .FROM('user_stats') \
-         .WHERE('lifetime_value > 1000')
-
-# SQL Generation (Generalized):
-# WITH user_stats AS (SELECT purchases.user_id, SUM(total_amount) as lifetime_value FROM purchases GROUP BY purchases.user_id)
-# SELECT * FROM user_stats WHERE lifetime_value > 1000
-
-# Execute
-vip_users = query.execute()
+# Select specific columns
+emails = await query.SELECT(users.email).FROM(users).LIMIT(5).run()
 ```
 
-### 4. Recursive Queries (Hierarchical Categories)
-
-(Note: Recursive CTE syntax support is consistent with standard CTEs)
-
+### Update (UPDATE)
 ```python
-class Categories(Table):
-    id = Integer()
-    parent_id = Integer()
-    name = String()
-
-cat = Categories()
-
-# Base case
-base = q.SELECT(cat.id, cat.name, cat.parent_id).FROM(cat).WHERE(cat.parent_id == 0) # Root categories
-
-# Recursive step (Conceptual example, assuming recursive union support via raw SQL or future expansion)
-# Currently, you can structure multiple CTEs for layered analysis.
-
-q.WITH('roots', base).SELECT('*').FROM('roots').execute()
+# Activate a user
+await query.UPDATE(users).SET(users.is_active == True).WHERE(users.email == "charlie@example.com").run()
 ```
 
-## Parameterization & Security
+### Delete (DELETE)
+```python
+# Delete inactive users
+await query.DELETE(users).WHERE(users.is_active == False).run()
+```
 
-Supersql automatically parameterizes values in `WHERE` clauses to prevent SQL injection.
+## 3. Advanced Querying
+
+### Joins with Aggregation
+Count posts per user.
 
 ```python
-# Values are safely parameterized
-q.SELECT(p).FROM(p).WHERE(p.name == "O'Reilly's Books").execute()
-# Resulting SQL uses placeholders: ... WHERE products.name = $1
+await query.SELECT(
+    users.email, 
+    query.COUNT(posts.id).AS("post_count")
+).FROM(
+    users
+).LEFT_JOIN(
+    posts, ON=(users.id == posts.user_id)
+).GROUP_BY(
+    users.email
+).run()
+```
+
+### Common Table Expressions (CTEs)
+Find users who have published more than 5 posts.
+
+```python
+# 1. CTE: Calculate post counts
+post_counts = query.SELECT(
+    posts.user_id, 
+    query.COUNT("*").AS("cnt")
+).FROM(
+    posts
+).WHERE(
+    posts.published == True
+).GROUP_BY(
+    posts.user_id
+)
+
+# 2. Main Query: Join CTE
+await query.WITH(
+    "stats", post_counts
+).SELECT(
+    users.email
+).FROM(
+    users
+).JOIN(
+    "stats", ON=(users.id == query.field("stats.user_id"))
+).WHERE(
+    query.field("stats.cnt") > 5
+).run()
+```
+
+### JSON Operations
+Querying a generic `meta` JSON column.
+
+```python
+logs = Table("logs")
+
+# Find logs where data->'level' is 'error'
+errors = await query.SELECT(logs).FROM(logs).WHERE(logs.data["level"] == "error").run()
 ```

@@ -5,19 +5,6 @@ class Result(object):
     def __init__(self, record: Any, schema: Any = None):
         self.__ = record
         self._schema = schema
-        
-        # Validate immediately if schema is present
-        if self._schema:
-            try:
-                from .schema import Schema
-                if isinstance(self._schema, type) and issubclass(self._schema, Schema):
-                    # Use the Schema's internal validator (which has the registration)
-                    self._schema(self.__).validate()
-                elif hasattr(self._schema, 'validate'):
-                     from pytastic import Pytastic
-                     vx = Pytastic()
-                     vx.validate(self._schema, self.__)
-            except Exception as e: raise e
 
     def column(self, col: str) -> Any:
         return self.__.get(col)
