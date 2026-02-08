@@ -13,7 +13,8 @@ from supersql.errors import (
     ArgumentError,
     MissingArgumentError,
     MissingCommandError,
-    DatabaseError
+    DatabaseError,
+    ProgrammingError
 )
 
 from .database import Database
@@ -149,7 +150,6 @@ class Query(object):
             self._port = port
             self._database = database
         self._silent = silent
-        # self._sql = []  # DEPRECATED: Replaced by QueryState
         self._state = QueryState()
         
         # Initialize Compiler based on engine
@@ -164,10 +164,7 @@ class Query(object):
              # raise NotImplementedError(f"Compiler for {self._engine} not implemented")
              # Use Postgres as default just to not crash, but this is dangerous
              self._compiler = PostgresCompiler() 
-             
-        self._sql = [] # Keep this for backward compatibility if any method accesses it directly
-                       # But we should try to move away from it.
-
+              
         self._pristine = True
         self._disparity = 0  # how many tables is this query for?
         self._from = []
@@ -283,7 +280,6 @@ class Query(object):
             new_query._callstack = self._callstack.copy()
             new_query._from = self._from.copy()
             new_query._args = self._args.copy()
-            # _sql is deprecated but if populated we might copy it? No, we are moving away.
             return new_query
             
         return self
@@ -300,8 +296,6 @@ class Query(object):
         if is_dirty:
             old_state = self._state
             new_state = QueryState()
-            # Preserve connection-level state if needed? 
-            # No, semantic state is reset.
             new_state.chain = old_state.chain + [old_state]
             self._state = new_state
 
@@ -310,9 +304,6 @@ class Query(object):
             return f" {condition}"
         else:
             try:
-                # NOTE: condition here is most likely Base instance and we can get values etc out of it???? maybe???
-                # for using in $1, $2, $3 etc variable replacements
-                # we can use a dict? to save column and get values for each - sleepy so do this when brain is fresh
                 return f" {condition.print(self)}"
             except AttributeError:
                 msg = "Where clause can only process strings or column comparison operations"
@@ -377,16 +368,9 @@ class Query(object):
         """
         # If we have state, compile it
         return self._compiler.compile(self._state)
-        # legacy fallback: return "".join(self._sql)
     
     async def run(self, *args, **kwargs) -> Results:
         async with self._db as db:
-            # We pass self, and db.execute calls self.print() usually?
-            # Or does db.execute expect a string?
-            # In database.py: 
-            # async def execute(self, query: Union['Query', str], ...)
-            #    if isinstance(query, Query): sql = query.print()
-            # So updating print() is enough!
             results = await db.execute(self)
             return Results(results)
 
@@ -401,10 +385,9 @@ class Query(object):
     def warn(self, command):
         if self._callstack[-1] == command:
             msg = f'Invalid Query Chaining: repeated {command} more than once'
-            raise SQLError(msg)
+            raise ProgrammingError(msg)
     
     def AND(self, condition):
-        # self._sql.append(_AND)
         snippet = self._conditionator(condition).strip()
         self._state.wheres.append(snippet)
         return self
@@ -424,7 +407,6 @@ class Query(object):
         
         this._chain_state()
         this._state.statement_type = 'BEGIN'
-        # this._sql.append('BEGIN')
         return this
     
     def COMMIT(self):
@@ -450,12 +432,10 @@ class Query(object):
             tablename = table
         elif isinstance(table, Table):
             tablename = table.__tn__()
+        else:
+             raise ArgumentError(f"DELETE FROM expects a table name or Table object, got {type(table)}")
         
-        this._tablenames.add(tablename)
         this._state.from_sources.append(tablename)
-        
-        # sqlstatement = f'{this._t_}DELETE FROM {tablename}'
-        # this._sql.append(sqlstatement)
         return this
 
     def FETCH(self, *args):
@@ -482,14 +462,13 @@ class Query(object):
                 _q = source
             elif isinstance(source, Query):
                 _a = source._alias
-                # Nested Query! 
-                # For string based compiler, we probably want the string rep ??
-                # Or store the Query object? QueryState allows Any.
-                # Let's store the string for now to match legacy behavior
+                # Nested Query: store the string for now to match legacy behavior
                 _q = f"({source.print()})"
             elif isinstance(source, Table):
                 _a = source._alias
                 _q = source.__tn__()
+            else:
+                 raise ArgumentError(f"FROM expects string, Query, or Table, got {type(source)}")
 
             _from = f"{_q} AS {_a}" if _a and num_of_tables > 1 else f"{_q}"
             froms_to_add.append(_from)
@@ -498,8 +477,6 @@ class Query(object):
         
         # Legacy support
         self._from.extend(froms_to_add)
-        # self._sql ... not updating anymore
-
         return self
 
     def GROUP_BY(self, *args):
@@ -546,10 +523,6 @@ class Query(object):
             cols = list(args)
             
         this._state.insert_columns = cols
-
-        # sql_ = f"{this._t_}{INSERT_INTO_}{t}"
-        # sql_ = f"{sql_} ({', '.join(*args)})" if len(args) > 0 else sql_
-        # this._sql.append(sql_)
         return this
 
     def JOIN(self, table, on=None, join_type='INNER'):
@@ -591,8 +564,8 @@ class Query(object):
         
 
         
+        
         self._state.joins.append(join_sql)
-        # self._sql.append(join_sql)
         return self
     
     def LEFT_JOIN(self, table, on=None):
@@ -623,7 +596,6 @@ class Query(object):
             Query: self for method chaining
         """
         self._callstack.append('LIMIT')
-        
         if offset is not None: self._sql.append(f" LIMIT {count} OFFSET {offset}")
         else: self._sql.append(f" LIMIT {count}")
         return self
@@ -663,7 +635,6 @@ class Query(object):
         
         if order_parts:
             self._state.orders.extend(order_parts)
-            # self._sql.append(f" ORDER BY {', '.join(order_parts)}")
         return self
 
     def RETURNING(self, *args):
@@ -681,15 +652,13 @@ class Query(object):
 
         parsed = parsed or ['*']
 
-        # sql = ", ".join(parsed)
-        # self._sql.append(f' RETURNING {sql}')
+        parsed = parsed or ['*']
         self._state.returning = parsed
         return self
 
     def SELECT(self, *args):
         this = self._clone()
         this._consequence = DQL
-        # this._callstack.append(SELECT) # Clone copies callstack, so we append to new
         this._callstack.append(SELECT)
         
         if this._state.statement_type in ('UPDATE', 'DELETE', 'BEGIN', 'COMMIT'):
@@ -702,7 +671,7 @@ class Query(object):
         cols = []
         
         if num_of_args == 0:
-            separator = "*" # Legacy var name
+            separator = "*" 
             cols.append("*")
         elif num_of_args == 1:
             arg = args[0]
@@ -714,7 +683,7 @@ class Query(object):
                 cols.append(arg)
             elif isinstance(arg, Table):
                 this._tablenames.add(arg.__tn__())
-                cols.append("*") # TODO: Should extend with all cols? Existing code used "*"
+                cols.append("*") 
             else:
                 this._tablenames.add(arg._meta.__tn__())
                 cols.append(arg._name)
@@ -751,9 +720,6 @@ class Query(object):
 
     def SET(self, *args):
         self._callstack.append('SET')
-
-        # self._sql.append(f'SET {", ".join(ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args)}')
-        
         updates = [ax if isinstance(ax, (str, Number)) else ax.print(self) for ax in args]
         self._state.updates.extend(updates)
         return self
@@ -768,18 +734,12 @@ class Query(object):
     def UPDATE(self, table):
         this = self._clone()
         this._consequence = DML
-        
         this._chain_state()
         this._state.statement_type = 'UPDATE'
         this._callstack.append(UPDATE_)
         
         tn = table if isinstance(table, str) else table.__tn__()
         this._state.update_table = tn
-        # We need to handle SET clause too, which is not in the original VIEW? 
-        # Ah, update usually followed by SET.
-        # self._state.tables? UPDATE doesn't use FROM usually (standard SQL).
-        
-        # this._sql.append(...)
         return this
 
     def UPSERT(self, *args):
@@ -791,13 +751,12 @@ class Query(object):
         )
 
     def VALUES(self, *args):
-        # maybe validate len arg[args] matches the number of args provided if any in insert_into, maybe...
         self._callstack.append(VALUES_)
         vals = []
 
         def xfy(val):
             """Make vale sql friendly i.e. convert dates, booleans etc to sql types"""
-            if isinstance(val, str): val = val.replace("'", "''") # should we escape single quotes by default
+            if isinstance(val, str): val = val.replace("'", "''") 
             elif isinstance(val, bool): val = 'true' if val else 'false'
 
             return f"{val}"
@@ -807,8 +766,6 @@ class Query(object):
             sql = f"({_wparens})"
             vals.append(sql)
 
-        # sql = f" {VALUES_}{', '.join(vals)}"
-        # self._sql.append(sql)
         self._state.values.extend(vals)
         return self
 
