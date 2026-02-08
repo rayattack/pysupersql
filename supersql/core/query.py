@@ -7,7 +7,7 @@ import copy
 
 
 import logging
-from typing import Union, Optional
+from typing import Union, Optional, Any
 
 from supersql.errors import (
     ArgumentError,
@@ -79,7 +79,8 @@ class Query(object):
         pool_min_size: int = 10,
         pool_max_size: int = 10,
         pool_timeout: int = 60,
-        pool_recycle: int = -1
+        pool_recycle: int = -1,
+        schema: Optional[Any] = None
     ):
         """Query constructor
         Sets up a query engine for use by saving initialization
@@ -129,6 +130,7 @@ class Query(object):
         self._pool_max_size = pool_max_size
         self._pool_timeout = pool_timeout
         self._pool_recycle = pool_recycle
+        self._schema = schema
 
         if engine and '://' in str(engine):
             parsed = self._parse_connection_string(engine)
@@ -487,8 +489,12 @@ class Query(object):
             elif isinstance(source, Table):
                 _a = source._alias
                 _q = source.__tn__()
+            elif hasattr(source, '__tn__'):
+                 # Support for Schema classes
+                 _a = None # Schemas don't have built-in alias state like Table instances yet
+                 _q = source.__tn__()
             else:
-                 raise ArgumentError(f"FROM expects string, Query, or Table, got {type(source)}")
+                 raise ArgumentError(f"FROM expects string, Query, Table or Schema, got {type(source)}")
 
             _from = f"{_q} AS {_a}" if _a and num_of_tables > 1 else f"{_q}"
             froms_to_add.append(_from)
@@ -704,6 +710,12 @@ class Query(object):
             elif isinstance(arg, Table):
                 this._tablenames.add(arg.__tn__())
                 cols.append("*") 
+            elif hasattr(arg, '__tn__') and hasattr(arg, 'columns'):
+                # Support for Schema classes
+                this._tablenames.add(arg.__tn__())
+                # If selecting the Schema class itself, we probably want all columns or *
+                # For now let's use * to match Table behavior
+                cols.append("*")
             else:
                 this._tablenames.add(arg._meta.__tn__())
                 cols.append(arg._name)

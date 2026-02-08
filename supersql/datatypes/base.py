@@ -72,6 +72,8 @@ class Base(object):
 
         self._print = []
         self._alias = None
+        
+        self._operator = "="
 
         # used to maintain definition order of table schema
         # when SELECT is used/called
@@ -80,6 +82,19 @@ class Base(object):
     def __get__(self, instance, metadata):
         self._imeta = instance
         return self
+
+    def _clone_with_val(self, value, operator="="):
+        self.is_not_a_wedding_guest = False
+        this = self.clone()
+        this.value = value
+        this._operator = operator
+
+        # Check if _imeta has _alias (it might be a class or instance)
+        if hasattr(this, '_imeta') and getattr(this._imeta, '_alias', None):
+             this._print = f"{this._imeta._alias}.{this._name}"
+        else:
+             this._print = f"{this._name}"
+        return this
 
     def __set__(self, instance, value):
 
@@ -119,43 +134,28 @@ class Base(object):
         so we can be certain that instance has been set and can
         therefore get the alias to use
         """
-        self.is_not_a_wedding_guest = False
-        this = self.clone()
-        this.value = value
-
-        if this._imeta._alias:
-            this._print = f"{this._imeta._alias}.{this._name}"
-        else:
-            this._print = f"{this._name}"
-
-        return this
+        return self._clone_with_val(value, "=")
 
     def __ge__(self, value):
-        self.is_not_a_wedding_guest = False
-        return super().__ge__(value)
+        return self._clone_with_val(value, ">=")
 
     def __gt__(self, value):
-        self.is_not_a_wedding_guest = False
-        return self
+        return self._clone_with_val(value, ">")
 
     def __le__(self, value):
-        self.is_not_a_wedding_guest = False
+        return self._clone_with_val(value, "<=")
     
     def __lshift__(self, value):
-        self.is_not_a_wedding_guest = False
-        this = self.clone()
-        this.value = value
-        this._print = f"{this._name}"
-        return this
+        return self.__eq__(value)
     
     def __lt__(self, value):
-        self.is_not_a_wedding_guest = False
+        return self._clone_with_val(value, "<")
     
     def __mod__(self, value):
-        self.is_not_a_wedding_guest = False
+        return self._clone_with_val(value, "LIKE")
     
     def __ne__(self, value):
-        self.is_not_a_wedding_guest = False
+        return self._clone_with_val(value, "!=")
 
     def __xor__(self, value):
         self.is_not_a_wedding_guest = False
@@ -170,6 +170,7 @@ class Base(object):
         this.options = self.options
         this.value = self.value
         this.is_not_a_wedding_guest = self.is_not_a_wedding_guest
+        this._operator = getattr(self, '_operator', '=')
 
         this._print = None
         this._name = self._name
@@ -186,17 +187,21 @@ class Base(object):
 
     def print(self, query=None):
         # check if query.unsafe and use that for $1, $2, $3 etc
-        if query and query._unsafe:
-            return f"{self._print} = {self.python_to_sql_value(self.value)}"
+        op = getattr(self, '_operator', '=')
         
-        query._args.append(self.value)
+        if query and getattr(query, '_unsafe', False):
+            return f"{self._print} {op} {self.python_to_sql_value(self.value)}"
         
-        # Get placeholder from engine (postgres=$%d, mysql=%s, sqlite=?)
-        placeholder = query._db._engine.parameter_placeholder
-        if '%d' in placeholder:
-            placeholder = placeholder % len(query._args)
+        if query:
+            query._args.append(self.value)
+            # Get placeholder from engine (postgres=$%d, mysql=%s, sqlite=?)
+            placeholder = query._db._engine.parameter_placeholder
+            if '%d' in placeholder:
+                placeholder = placeholder % len(query._args)
+        else:
+            placeholder = '?'
             
-        return f"{self._print} = {placeholder}"
+        return f"{self._print} {op} {placeholder}"
 
     def python_to_sql_value(self, value):
         if isinstance(value, Number):
