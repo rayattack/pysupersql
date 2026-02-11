@@ -1,0 +1,1316 @@
+# SuperSQL LLM Reference & Context
+
+This file is the authoritative guide for Large Language Models to understand and write idiomatic code using the `supersql` library (Python). After reading this file, an LLM should be able to write crisp, correct SuperSQL code for any scenario.
+
+**Library Purpose**: SuperSQL is a Pythonic SQL query builder that maps Python objects and methods directly to SQL structure 1:1. It is NOT an ORM. It does not manage object state, lazy load relationships, or validate models. It constructs SQL queries with automatic parameterization and executes them against real databases.
+
+
+## 1. Core Philosophy
+
+- **Explicit over Implicit**: You specify exactly what SQL you want to run. No magic behind the scenes.
+- **No "Models"**: There are no model definitions. You use `Table` objects, which are dynamic references. Columns are accessed as attributes on the fly.
+- **Async First**: The library is designed for `async/await` execution (`await query.run()`). Synchronous wrappers (`query.execute()`) also exist.
+- **Automatic Parameterization**: All values passed to `WHERE`, `VALUES`, `SET` are automatically parameterized to prevent SQL injection. Parameterization style depends on the engine (Postgres: `$1`, MySQL: `%s`, SQLite: `?`).
+- **Fluent Chaining**: Queries are built by chaining method calls in order, mirroring the structure of standard SQL.
+
+
+## 2. Installation & Imports
+
+```python
+# Install core library
+pip install supersql
+
+# Install with database-specific dependencies
+pip install supersql[postgres]   # asyncpg
+pip install supersql[mysql]      # aiomysql
+pip install supersql[sqlite]     # aiosqlite
+pip install supersql[mssql]      # aioodbc + pyodbc
+pip install supersql[oracle]     # cx_Oracle
+```
+
+```python
+# The two main exports
+from supersql import Query, Table
+```
+
+
+## 3. Connections & Initialization
+
+The entry point is the `Query` object. Creating a `Query` object does NOT immediately connect to the database. Connections are made lazily when `await query.run()` or `query.execute()` is called.
+
+### Constructor Signature
+
+```python
+Query(
+    engine: str,                 # Required: "postgres", "mysql", "sqlite", etc.
+    dsn: str = None,             # Optional: Data Source Name
+    user: str = None,            # Optional: database user
+    password: str = None,        # Optional: database password
+    host: str = None,            # Optional: database host
+    port: int = None,            # Optional: database port
+    database: str = None,        # Optional: database name or file path (sqlite)
+    silent: bool = True,         # Optional: skip pre-flight syntax checks
+    unsafe: bool = False,        # Optional: bypass parameterization (DANGER)
+    pool_min_size: int = 10,     # Optional: minimum pool connections
+    pool_max_size: int = 10,     # Optional: maximum pool connections
+    pool_timeout: int = 60,      # Optional: seconds to wait for a pool connection
+    pool_recycle: int = -1,      # Optional: seconds before connection recycling (-1 = never)
+    schema: Any = None           # Optional: default schema
+)
+```
+
+### Supported Engines
+
+```
+sqlite, postgres, postgresql, oracle, oracledb, mariadb, mysql, mssql, sqlserver, athena, presto
+```
+
+### Examples
+
+```python
+from supersql import Query
+
+# PostgreSQL - keyword arguments
+q = Query("postgres", user="admin", password="secret", database="mydb", host="localhost", port=5432)
+
+# PostgreSQL - connection string
+q = Query("postgres://admin:secret@localhost:5432/mydb")
+
+# MySQL
+q = Query("mysql", user="root", password="pwd", database="mydb", host="127.0.0.1", port=3306)
+
+# SQLite - file
+q = Query("sqlite", database="my_db.sqlite")
+
+# SQLite - in-memory
+q = Query("sqlite", database=":memory:")
+
+# SQLite - connection string
+q = Query("sqlite://my_db.sqlite")
+
+# Connection pooling (automatic, configurable)
+q = Query("postgres", user="admin", password="secret", database="mydb",
+          host="localhost", pool_min_size=5, pool_max_size=20, pool_timeout=30)
+```
+
+
+## 4. Table Definitions
+
+`Table` objects are dynamic references to SQL tables. Columns are accessed as Python attributes and automatically become `Field` objects. No predefined column schema is needed.
+
+### Creating Tables
+
+```python
+from supersql import Table
+
+# Basic table reference
+users = Table("users")           # Refers to "users" table
+
+# With schema
+events = Table("events", schema="analytics")
+# events.id  ->  "events"."id"
+# str(events) -> '"analytics"."events"'
+
+# With alias
+u = Table("users").AS("u")       # Refers to "users" aliased as "u"
+# u.id     ->  "u"."id"
+# str(u)   ->  '"users" AS "u"'
+
+# Alternative alias method
+u = Table("users").alias("u")    # Same as .AS("u")
+```
+
+### Dynamic Field Access
+
+```python
+users = Table("users")
+
+# Accessing any attribute returns a Field object dynamically
+users.id          # Field: "users"."id"
+users.name        # Field: "users"."name"
+users.email       # Field: "users"."email"
+users.anything    # Field: "users"."anything"
+
+# With alias, fields use the alias
+u = users.AS("u")
+u.id              # Field: "u"."id"
+u.name            # Field: "u"."name"
+```
+
+
+## 5. SELECT Queries (DQL)
+
+### Basic SELECT
+
+```python
+# SELECT * (no arguments or "*")
+q.SELECT("*").FROM("users")
+q.SELECT().FROM("users")
+
+# SELECT specific columns (string literals - unquoted)
+q.SELECT("customer_id", "age").FROM("users")
+# -> SELECT customer_id, age FROM "users"
+
+# SELECT specific columns (Field objects - quoted)
+users = Table("users")
+q.SELECT(users.id, users.name).FROM(users)
+# -> SELECT "users"."id", "users"."name" FROM "users"
+
+# SELECT from multiple tables
+u = Table("users").AS("u")
+p = Table("posts").AS("p")
+q.SELECT(u.name, p.title).FROM(u, p)
+# -> SELECT "u"."name", "p"."title" FROM "users" AS "u", "posts" AS "p"
+```
+
+### FROM clause
+
+```python
+# String table name (auto-quoted)
+q.SELECT("*").FROM("users")
+# -> FROM "users"
+
+# Table object
+users = Table("users")
+q.SELECT(users.id).FROM(users)
+# -> FROM "users"
+
+# Multiple sources
+q.SELECT(u.name, p.title).FROM(u, p)
+
+# Subquery in FROM
+sub = q.SELECT("*").FROM("orders").AS("recent_orders")
+q.SELECT("*").FROM(sub)
+```
+
+### WHERE clause
+
+Field objects support Python operator overloading for building conditions:
+
+| Python Operator | SQL Equivalent |
+|:---:|:---:|
+| `==` | `=` |
+| `!=` | `<>` |
+| `>` | `>` |
+| `<` | `<` |
+| `>=` | `>=` |
+| `<=` | `<=` |
+| `&` | `AND` |
+| `\|` | `OR` |
+| `~` | `NOT` |
+
+#### Special Methods on Fields
+
+| Method | SQL Equivalent |
+|:---|:---|
+| `.IN([list])` | `IN (...)` |
+| `.NOT_IN([list])` | `NOT IN (...)` |
+| `.LIKE('pattern')` | `LIKE 'pattern'` |
+| `.ILIKE('pattern')` | `ILIKE 'pattern'` (Postgres) |
+| `.BETWEEN(low, high)` | `BETWEEN low AND high` |
+| `.IS_NULL()` | `IS NULL` |
+| `.IS_NOT_NULL()` | `IS NOT NULL` |
+
+#### Examples
+
+```python
+users = Table("users")
+
+# Simple equality
+q.SELECT(users.name).FROM(users).WHERE(users.age == 30)
+# -> SELECT "users"."name" FROM "users" WHERE "users"."age" = $1
+# params: [30]
+
+# Compound conditions with & (AND) and | (OR)
+q.SELECT(users.name).FROM(users).WHERE(
+    (users.age > 18) & ((users.role == 'admin') | (users.role == 'mod'))
+)
+# -> WHERE ("users"."age" > $1) AND (("users"."role" = $2) OR ("users"."role" = $3))
+# params: [18, 'admin', 'mod']
+
+# IN
+q.SELECT(users.name).FROM(users).WHERE(
+    users.status.IN(['active', 'pending'])
+)
+# -> WHERE "users"."status" IN ($1, $2)
+# params: ['active', 'pending']
+
+# NOT IN
+q.SELECT(users.name).FROM(users).WHERE(
+    users.id.NOT_IN([1, 2, 3])
+)
+# -> WHERE "users"."id" NOT IN ($1, $2, $3)
+
+# LIKE
+q.SELECT(users.name).FROM(users).WHERE(
+    users.name.LIKE('A%')
+)
+# -> WHERE "users"."name" LIKE $1
+# params: ['A%']
+
+# BETWEEN
+q.SELECT(users.name).FROM(users).WHERE(
+    users.age.BETWEEN(18, 65)
+)
+# -> WHERE "users"."age" BETWEEN $1 AND $2
+# params: [18, 65]
+
+# IS NULL / IS NOT NULL
+q.SELECT(users.name).FROM(users).WHERE(users.email.IS_NOT_NULL())
+
+# Combining multiple condition types
+q.SELECT(users.name).FROM(users).WHERE(
+    (users.age >= 21) &
+    (users.status.IN(['active', 'verified'])) &
+    (users.name.LIKE('J%'))
+)
+```
+
+### JOIN clause
+
+Supported join types: `JOIN` (Inner), `LEFT_JOIN`, `RIGHT_JOIN`, `FULL_JOIN`, `CROSS_JOIN`.
+
+```python
+u = Table("users").AS("u")
+p = Table("posts").AS("p")
+c = Table("comments").AS("c")
+
+# INNER JOIN
+q.SELECT(u.name, p.title) \
+ .FROM(u) \
+ .JOIN(p, on=(u.id == p.user_id))
+# -> FROM "users" AS "u" INNER JOIN "posts" ON "u"."id" = $1
+# Note: The ON condition uses the Field comparison operators
+
+# LEFT JOIN
+q.SELECT(u.name, p.title) \
+ .FROM(u) \
+ .LEFT_JOIN(p, on=(u.id == p.user_id))
+
+# RIGHT JOIN
+q.SELECT(u.name, p.title) \
+ .FROM(u) \
+ .RIGHT_JOIN(p, on=(u.id == p.user_id))
+
+# FULL OUTER JOIN
+q.SELECT(u.name, p.title) \
+ .FROM(u) \
+ .FULL_JOIN(p, on=(u.id == p.user_id))
+
+# CROSS JOIN (no ON condition)
+q.SELECT(u.name, p.title) \
+ .FROM(u) \
+ .CROSS_JOIN(p)
+
+# String-based ON condition (raw SQL)
+q.SELECT("*").FROM("cte1").JOIN("cte2", on="cte1.a = cte2.b")
+# -> INNER JOIN "cte2" ON cte1.a = cte2.b
+
+# Multiple joins
+q.SELECT(u.name, p.title, c.body) \
+ .FROM(u) \
+ .JOIN(p, on=(u.id == p.user_id)) \
+ .LEFT_JOIN(c, on=(p.id == c.post_id))
+```
+
+### GROUP BY clause
+
+```python
+users = Table("users")
+
+q.SELECT(users.role, q.COUNT(users.id)).FROM(users).GROUP_BY(users.role)
+# -> SELECT "users"."role", COUNT("users"."id") OVER () FROM "users" GROUP BY "users"."role"
+```
+
+### ORDER BY clause
+
+Use `-field` (unary negative) for DESC order, `+field` or just `field` for ASC.
+
+```python
+users = Table("users")
+
+# Ascending (default)
+q.SELECT(users.name).FROM(users).ORDER_BY(users.age)
+
+# Descending using negative operator
+q.SELECT(users.name).FROM(users).ORDER_BY(-users.age)
+# -> ORDER BY "users"."age" DESC
+
+# Multiple order columns
+q.SELECT(users.name).FROM(users).ORDER_BY(-users.age, users.name)
+# -> ORDER BY "users"."age" DESC, "users"."name" ASC
+
+# String-based ordering
+q.SELECT("*").FROM("users").ORDER_BY("-age")
+# -> ORDER BY age DESC
+```
+
+### LIMIT & OFFSET
+
+```python
+# Limit only
+q.SELECT(users.name).FROM(users).ORDER_BY(-users.age).LIMIT(10)
+# -> LIMIT 10
+
+# Limit with offset
+q.SELECT(users.name).FROM(users).ORDER_BY(-users.age).LIMIT(10, offset=20)
+# -> LIMIT 10 OFFSET 20
+```
+
+### Field Aliases
+
+```python
+users = Table("users")
+
+# Alias a field
+q.SELECT(users.first_name.AS("fname"), users.last_name.AS("lname")).FROM(users)
+# -> SELECT "users"."first_name" AS fname, "users"."last_name" AS lname FROM "users"
+```
+
+
+## 6. INSERT Queries (DML)
+
+### Basic INSERT
+
+```python
+users = Table("users")
+
+# Insert with column names (tuple of strings)
+q.INSERT_INTO("customers", ("first_name", "last_name", "age")) \
+ .VALUES(("Marie", "Sue", 25))
+# -> INSERT INTO "customers" ("first_name", "last_name", "age") VALUES ($1, $2, $3)
+# params: ['Marie', 'Sue', 25]
+
+# Insert with Field objects
+q.INSERT_INTO(users, users.name, users.email) \
+ .VALUES(("Alice", "alice@example.com"))
+# -> INSERT INTO "users" ("users"."name", "users"."email") VALUES ($1, $2)
+
+# Insert without specifying columns
+q.INSERT_INTO("customers").VALUES(("Student", 17))
+# -> INSERT INTO "customers" VALUES ($1, $2)
+```
+
+### Multiple Row INSERT
+
+```python
+q.INSERT_INTO("wasabis", ("age", "title")) \
+ .VALUES(
+    (1, "Baby"),
+    (34, "CEO"),
+    (12, "Student")
+ )
+# -> INSERT INTO "wasabis" ("age", "title") VALUES ($1, $2), ($3, $4), ($5, $6)
+# params: [1, 'Baby', 34, 'CEO', 12, 'Student']
+```
+
+### INSERT ... RETURNING
+
+```python
+# RETURNING all columns
+q.INSERT_INTO("wasabis").VALUES(("Student", 17)).RETURNING("*")
+# -> INSERT INTO "wasabis" VALUES ($1, $2) RETURNING *
+
+# RETURNING specific columns
+users = Table("users")
+q.INSERT_INTO("users").VALUES(("Alice", 30)).RETURNING(users.id, users.name)
+# -> INSERT INTO "users" VALUES ($1, $2) RETURNING "users"."id", "users"."name"
+```
+
+### INSERT ... SELECT (Query Composition)
+
+```python
+# Insert from another query's result
+q.INSERT_INTO("customers", ("a", "b", "c")) \
+ .SELECT("x", "y", "z") \
+ .FROM("extra") \
+ .WHERE("x = 5")
+# -> INSERT INTO "customers" ("a", "b", "c") SELECT x, y, z FROM "extra" WHERE x = 5
+```
+
+
+## 7. UPDATE Queries
+
+```python
+users = Table("users")
+
+# Basic update
+q.UPDATE("customers") \
+ .SET(users.age == 34) \
+ .WHERE(users.email == "alice@example.com")
+# -> UPDATE customers SET "users"."age" = $1 WHERE "users"."email" = $2
+# params: [34, 'alice@example.com']
+
+# Update with Table object
+q.UPDATE(users) \
+ .SET(users.status == "active", users.age == 31) \
+ .WHERE(users.id == 5)
+```
+
+
+## 8. DELETE Queries
+
+```python
+users = Table("users")
+
+# Delete with string table name
+q.DELETE_FROM("users").WHERE(users.last_login < "2020-01-01")
+# -> DELETE FROM "users" WHERE "users"."last_login" < $1
+# params: ['2020-01-01']
+
+# Delete with Table object
+q.DELETE_FROM(users).WHERE(users.id == 42)
+
+# Alias: DELETE() is the same as DELETE_FROM()
+q.DELETE(users).WHERE(users.id == 42)
+
+# Delete with RETURNING
+q.DELETE_FROM(users).WHERE(users.id == 42).RETURNING(users.id)
+```
+
+
+## 9. Common Table Expressions (CTEs)
+
+Use `.WITH(alias, query)` to define CTEs. The `query` argument can be either a `Query` object or a raw SQL string.
+
+### Basic CTE
+
+```python
+# Build the CTE subquery using _clone()
+q_cte = q._clone().SELECT("*").FROM("users")
+
+# Use the CTE in a main query
+result = q.WITH("users_cte", q_cte) \
+          .SELECT("*").FROM("users_cte")
+# -> WITH users_cte AS (SELECT * FROM "users")
+#    SELECT * FROM "users_cte"
+```
+
+### Multiple CTEs
+
+```python
+q1 = q._clone().SELECT("a").FROM("t1")
+q2 = q._clone().SELECT("b").FROM("t2")
+
+result = q.WITH("cte1", q1) \
+          .WITH("cte2", q2) \
+          .SELECT("*").FROM("cte1") \
+          .JOIN("cte2", on="cte1.a = cte2.b")
+# -> WITH cte1 AS (SELECT a FROM "t1"), cte2 AS (SELECT b FROM "t2")
+#    SELECT * FROM "cte1" INNER JOIN "cte2" ON cte1.a = cte2.b
+```
+
+### CTE with String Subquery
+
+```python
+q.WITH("old_users", "SELECT * FROM users WHERE age > 50") \
+ .DELETE_FROM("old_users")
+# -> WITH old_users AS (SELECT * FROM users WHERE age > 50)
+#    DELETE FROM "old_users"
+```
+
+### CTE with DELETE (Cleanup Pattern)
+
+```python
+users = Table("users")
+
+# Define inactive users as a CTE
+inactive = q._clone().SELECT(users.id).FROM(users).WHERE(users.active == False)
+
+# Delete using the CTE
+await q.WITH("inactive_users", inactive) \
+       .DELETE_FROM(users) \
+       .WHERE(users.id.IN(Table("inactive_users").id)) \
+       .run()
+```
+
+### The _clone() Method
+
+`q._clone()` creates a fresh Query with the same connection configuration but empty state. This is essential for building CTE subqueries that don't inherit parent state:
+
+```python
+# Always clone before building a CTE subquery
+cte_query = q._clone().SELECT(users.id).FROM(users).WHERE(users.active == True)
+
+# The main query continues from the original q
+main = q.WITH("active", cte_query).SELECT("*").FROM("active")
+```
+
+
+## 10. Window Functions
+
+SuperSQL provides first-class support for SQL window functions through a fluent API.
+
+### Available Window Functions
+
+**Ranking Functions:**
+- `q.ROW_NUMBER()` - Sequential row number within partition
+- `q.RANK()` - Rank with gaps for ties
+- `q.DENSE_RANK()` - Rank without gaps
+- `q.NTILE(n)` - Distribute into `n` roughly equal groups
+- `q.PERCENT_RANK()` - Relative rank (0 to 1)
+- `q.CUME_DIST()` - Cumulative distribution
+
+**Value Functions:**
+- `q.LAG(column, offset=1, default=None)` - Access previous row value
+- `q.LEAD(column, offset=1, default=None)` - Access next row value
+- `q.FIRST_VALUE(column)` - First value in window frame
+- `q.LAST_VALUE(column)` - Last value in window frame
+- `q.NTH_VALUE(column, n)` - Nth value in window frame
+
+**Aggregate Window Functions:**
+- `q.SUM(column)` - Running or partitioned sum
+- `q.AVG(column)` - Running or partitioned average
+- `q.COUNT(column)` - Running or partitioned count
+- `q.MIN(column)` - Running or partitioned minimum
+- `q.MAX(column)` - Running or partitioned maximum
+
+### Window Specification: PARTITION_BY + ORDER_BY
+
+Window functions require an `.OVER()` clause containing a `WindowSpec`. Build specs using `q.PARTITION_BY()`:
+
+```python
+sales = Table("sales")
+
+# Partition and order
+spec = q.PARTITION_BY(sales.product).ORDER_BY(-sales.amount)
+
+# Empty partition (whole result set)
+spec = q.PARTITION_BY().ORDER_BY(sales.date)
+
+# The full pattern: function -> OVER -> AS
+row_num = q.ROW_NUMBER().OVER(spec).AS("rn")
+```
+
+### Ordering in Window Specs
+
+Use `-field` for DESC, or `field` / `+field` for ASC:
+
+```python
+spec = q.PARTITION_BY(sales.department).ORDER_BY(-sales.salary)
+#                                                ^^^^^^^^^^^^
+#                                                DESC order
+```
+
+### Frame Specifications
+
+```python
+# ROWS BETWEEN
+spec = q.PARTITION_BY().ORDER_BY(sales.date) \
+        .ROWS_BETWEEN("2 PRECEDING", "CURRENT ROW")
+# -> ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+
+# RANGE BETWEEN
+spec = q.PARTITION_BY().ORDER_BY(sales.amount) \
+        .RANGE_BETWEEN("UNBOUNDED PRECEDING", "CURRENT ROW")
+# -> RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+```
+
+### Named Windows
+
+Define a window once, reference it in multiple functions:
+
+```python
+sales = Table("sales")
+
+# Define the spec
+w_spec = q.PARTITION_BY(sales.product).ORDER_BY(-sales.amount)
+
+# Reference by name in OVER
+row_num = q.ROW_NUMBER().OVER("w").AS("rn")
+rank    = q.RANK().OVER("w").AS("rank")
+
+# Register the named window with WINDOW
+sql = q.SELECT(sales.product, sales.amount, row_num, rank) \
+       .FROM(sales) \
+       .WINDOW("w", w_spec) \
+       .build()
+# -> SELECT ... ROW_NUMBER() OVER w AS rn, RANK() OVER w AS rank
+#    FROM "sales"
+#    WINDOW w AS (PARTITION BY "sales"."product" ORDER BY "sales"."amount" DESC)
+```
+
+### Complete Window Function Examples
+
+**Example 1: Ranking employees by salary within each department**
+
+```python
+employees = Table("employees")
+
+spec = q.PARTITION_BY(employees.department).ORDER_BY(-employees.salary)
+
+row_num    = q.ROW_NUMBER().OVER(spec).AS("rn")
+rank       = q.RANK().OVER(spec).AS("rank")
+dense_rank = q.DENSE_RANK().OVER(spec).AS("dense_rank")
+
+result = await q.SELECT(
+    employees.name,
+    employees.department,
+    employees.salary,
+    row_num,
+    rank,
+    dense_rank
+).FROM(employees).run()
+```
+
+**Example 2: Running total & moving average**
+
+```python
+orders = Table("orders")
+
+# Running total (cumulative sum)
+running_spec = q.PARTITION_BY().ORDER_BY(orders.date) \
+                .ROWS_BETWEEN("UNBOUNDED PRECEDING", "CURRENT ROW")
+
+running_total = q.SUM(orders.amount).OVER(running_spec).AS("running_total")
+
+# 3-day moving average
+moving_spec = q.PARTITION_BY().ORDER_BY(orders.date) \
+               .ROWS_BETWEEN("2 PRECEDING", "CURRENT ROW")
+
+moving_avg = q.AVG(orders.amount).OVER(moving_spec).AS("moving_avg_3d")
+
+result = await q.SELECT(
+    orders.date,
+    orders.amount,
+    running_total,
+    moving_avg
+).FROM(orders).run()
+```
+
+**Example 3: Comparing current row to previous/next**
+
+```python
+stock = Table("stock_prices")
+
+spec = q.PARTITION_BY(stock.ticker).ORDER_BY(stock.date)
+
+prev_close = q.LAG(stock.close, 1).OVER(spec).AS("prev_close")
+next_close = q.LEAD(stock.close, 1).OVER(spec).AS("next_close")
+first_close = q.FIRST_VALUE(stock.close).OVER(spec).AS("ipo_price")
+
+result = await q.SELECT(
+    stock.ticker,
+    stock.date,
+    stock.close,
+    prev_close,
+    next_close,
+    first_close
+).FROM(stock).run()
+```
+
+**Example 4: Quartile distribution**
+
+```python
+students = Table("students")
+
+spec = q.PARTITION_BY().ORDER_BY(-students.score)
+
+quartile = q.NTILE(4).OVER(spec).AS("quartile")
+pct_rank = q.PERCENT_RANK().OVER(spec).AS("percentile")
+cume_dist = q.CUME_DIST().OVER(spec).AS("cumulative")
+
+result = await q.SELECT(
+    students.name,
+    students.score,
+    quartile,
+    pct_rank,
+    cume_dist
+).FROM(students).run()
+```
+
+
+## 11. Transaction Management
+
+```python
+# Begin a transaction
+q = q.BEGIN()
+
+# Perform operations (cloning is paused during transaction)
+await q.INSERT_INTO(users, users.name).VALUES(("Alice",)).run()
+await q.UPDATE(users).SET(users.status == "active").WHERE(users.id == 1).run()
+
+# Commit
+await q.COMMIT().run()
+
+# Or rollback on error
+await q.database.rollback()
+```
+
+The `BEGIN`/`COMMIT` methods chain into the same statement sequence. During a transaction, query cloning is paused (operations build on the same state).
+
+
+## 12. Working with Results
+
+`await query.run()` returns a `Results` object. `Results` is an iterable of `Result` objects, each representing a row.
+
+### The Results Object
+
+```python
+results = await q.SELECT(users.id, users.name, users.email).FROM(users).run()
+```
+
+#### Iteration (sync)
+
+```python
+for row in results:
+    print(row.id)       # Attribute access
+    print(row.name)
+    print(row["email"])  # Dictionary-style access
+```
+
+#### Async Iteration
+
+```python
+async for row in results:
+    print(row.id)
+    print(row["name"])
+```
+
+#### Random Access (1-indexed)
+
+```python
+# Get a specific row (1-indexed, returns a Result object)
+first_row = results.row(1)
+print(first_row.name)
+
+# Get a specific cell value (1-indexed row, column name)
+name = results.cell(1, "name")
+age  = results.cell(2, "age")
+```
+
+#### Truthiness (Empty Check)
+
+```python
+results = await q.SELECT(users.id).FROM(users).WHERE(users.id == 99999).run()
+
+if not results:
+    print("No records found")
+```
+
+#### Slicing Rows
+
+```python
+# Get first N rows as a new Results object
+first_five = results.rows(limit=5)
+```
+
+#### Reset Iterator
+
+```python
+# Reset the iterator position
+results.seek(0)
+
+# Skip first 3 rows
+results.seek(3)
+```
+
+### The Result Object (Single Row)
+
+Each `Result` represents one row and supports:
+
+```python
+row = results.row(1)
+
+# Attribute access (dot notation)
+row.id          # Column value
+row.name        # Column value
+
+# Dictionary access
+row["id"]       # Column value
+row["name"]     # Column value
+
+# Column method
+row.column("id")  # Column value
+```
+
+
+## 13. Query Inspection & Debugging
+
+### build() - Generate SQL String
+
+```python
+sql = q.SELECT(users.name).FROM(users).WHERE(users.age > 18).build()
+# Returns: 'SELECT "users"."name" FROM "users" WHERE "users"."age" > $1'
+# Also updates q._args with parameters
+```
+
+### print() - Print and Return SQL
+
+```python
+sql = q.SELECT(users.name).FROM(users).WHERE(users.age > 18).print()
+# Prints to stdout:
+#   SELECT "users"."name" FROM "users" WHERE "users"."age" > $1
+#   Parameters: [18]
+# Returns the SQL string
+```
+
+### args Property - Access Parameters
+
+```python
+query = q.SELECT(users.name).FROM(users).WHERE(users.age > 18)
+query.build()
+print(query.args)  # [18]
+```
+
+### Execution Methods
+
+```python
+# Async execution (preferred)
+results = await query.run()
+
+# Synchronous execution (wrapper around run())
+results = query.execute()
+```
+
+
+## 14. Database Object & Reflection
+
+The `Query.database` property returns a `Database` object for inspection and direct operations.
+
+### Accessing the Database
+
+```python
+db = q.database   # Database instance
+
+# Async connect/disconnect
+await db.connect()
+await db.disconnect()
+
+# Sync connect/disconnect
+db.connects()
+db.disconnects()
+```
+
+### Raw SQL Execution
+
+```python
+# Execute raw SQL directly
+result = await q.database.raw("SELECT version()")
+```
+
+### Table Reflection
+
+Inspect existing database tables to create Table objects with pre-populated columns:
+
+```python
+# Reflect a specific table (returns a Table with typed fields)
+employees = await q.database.table("employees")
+# employees now has fields populated from the actual database schema
+
+# Get all tables as a dictionary
+all_tables = await q.database.tables()
+# Returns: Dict[str, Table]
+# e.g. {"users": Table, "posts": Table, "comments": Table}
+```
+
+Reflection works for Postgres, MySQL, and SQLite, using each engine's native introspection (e.g., `information_schema` for Postgres, `DESCRIBE` for MySQL, `PRAGMA table_info` for SQLite).
+
+
+## 15. Query Cloning & Reuse
+
+One of SuperSQL's unique strengths is query reuse through cloning. Since `SELECT()` returns a new query clone, the original is unchanged and can be reused.
+
+### How Cloning Works
+
+`SELECT()`, `INSERT_INTO()`, `UPDATE()`, `DELETE_FROM()`, `WITH()`, `BEGIN()` all return clones. Methods like `FROM()`, `WHERE()`, `JOIN()`, `ORDER_BY()`, `LIMIT()`, `GROUP_BY()`, `SET()`, `VALUES()`, `RETURNING()`, `WINDOW()` modify the current query in-place and return `self`.
+
+### Reuse Pattern: Base Query Template
+
+```python
+q = Query("postgres", user="admin", password="secret", database="mydb", host="localhost")
+users = Table("users")
+
+# Build reusable base queries
+active_users = q.SELECT(users.name, users.email).FROM(users).WHERE(users.active == True)
+
+# Extend in different directions - each SELECT creates a clone
+admins = q.SELECT(users.name, users.email).FROM(users).WHERE(
+    (users.active == True) & (users.role == "admin")
+)
+
+recent = q.SELECT(users.name, users.email).FROM(users).WHERE(
+    (users.active == True) & (users.created_at > "2024-01-01")
+)
+```
+
+### Clone for CTE Subqueries
+
+```python
+# Always use _clone() for CTE subqueries
+base_q = Query("postgres", database="analytics")
+events = Table("events")
+
+# Build the CTE
+daily_counts = base_q._clone() \
+    .SELECT(events.date, q.COUNT(events.id)).FROM(events) \
+    .GROUP_BY(events.date)
+
+# Build the main query using the CTE
+result = await base_q.WITH("daily", daily_counts) \
+    .SELECT("*").FROM("daily") \
+    .ORDER_BY("-date") \
+    .LIMIT(30) \
+    .run()
+```
+
+
+## 16. Parameterization by Engine
+
+SuperSQL automatically handles parameterization differently based on the database engine:
+
+| Engine | Placeholder | Example |
+|:---|:---|:---|
+| **PostgreSQL** | `$1`, `$2`, `$3`... | `WHERE age > $1 AND name = $2` |
+| **MySQL** | `%s` | `WHERE age > %s AND name = %s` |
+| **SQLite** | `?` | `WHERE age > ? AND name = ?` |
+
+This is transparent to the user. The same Python code produces correct SQL for any engine:
+
+```python
+# Same Python code
+q.SELECT(users.name).FROM(users).WHERE(users.age > 18)
+
+# Postgres output: SELECT "users"."name" FROM "users" WHERE "users"."age" > $1
+# MySQL output:    SELECT "users"."name" FROM "users" WHERE "users"."age" > %s
+# SQLite output:   SELECT "users"."name" FROM "users" WHERE "users"."age" > ?
+```
+
+
+## 17. Error Handling
+
+SuperSQL provides a structured error hierarchy:
+
+| Exception | When Raised |
+|:---|:---|
+| `ArgumentError` | Invalid arguments passed to query methods |
+| `MissingArgumentError` | Required argument not provided |
+| `MissingCommandError` | SQL command structure is incomplete |
+| `ProgrammingError` | Invalid query chaining (e.g., repeated method calls) |
+| `DatabaseError` | Database-level execution errors |
+| `ValidationError` | Value validation failures |
+| `VendorDependencyError` | Missing database driver (e.g., asyncpg not installed) |
+| `UnsupportedVendorError` | Unsupported database engine specified |
+
+```python
+from supersql.errors import VendorDependencyError, ArgumentError
+
+try:
+    q = Query("postgres", database="mydb")
+    results = await q.SELECT("*").FROM("users").run()
+except VendorDependencyError:
+    print("Install asyncpg: pip install supersql[postgres]")
+except ArgumentError as e:
+    print(f"Bad query: {e}")
+```
+
+
+## 18. Advanced Patterns & Real-World Examples
+
+### E-Commerce Analytics: Top Customers by Spend
+
+```python
+from supersql import Query, Table
+
+async def get_top_customers():
+    q = Query("postgres", user="app", password="secret", database="store", host="localhost")
+
+    users  = Table("users").AS("u")
+    orders = Table("orders").AS("o")
+    items  = Table("order_items").AS("i")
+
+    # CTE: Calculate total spent per user
+    user_spend = q._clone().SELECT(
+        orders.user_id,
+        q.SUM(items.price).OVER(
+            q.PARTITION_BY(orders.user_id)
+        ).AS("total_spent")
+    ).FROM(orders) \
+     .JOIN(items, on=(orders.id == items.order_id)) \
+     .GROUP_BY(orders.user_id)
+
+    # Main Query: Rank users
+    spend_tbl = Table("user_spend")
+    spend_rank = q.RANK().OVER(
+        q.PARTITION_BY().ORDER_BY("-total_spent")
+    ).AS("rank")
+
+    result = await q.WITH("user_spend", user_spend) \
+        .SELECT(users.name, users.email, spend_tbl.total_spent, spend_rank) \
+        .FROM(users) \
+        .JOIN(spend_tbl, on=(users.id == spend_tbl.user_id)) \
+        .ORDER_BY(spend_rank) \
+        .LIMIT(10) \
+        .run()
+
+    for row in result:
+        print(f"#{row.rank} - {row.name}: ${row.total_spent}")
+
+    return result
+```
+
+### Sales Report: Year-over-Year Comparison
+
+```python
+async def yoy_comparison():
+    q = Query("postgres", database="analytics", host="localhost")
+    sales = Table("sales")
+
+    # Current year totals
+    spec = q.PARTITION_BY(sales.product).ORDER_BY(sales.month)
+
+    current  = q.SUM(sales.revenue).OVER(spec).AS("ytd_revenue")
+    prev_month = q.LAG(sales.revenue, 1).OVER(spec).AS("prev_month")
+
+    result = await q.SELECT(
+        sales.product,
+        sales.month,
+        sales.revenue,
+        current,
+        prev_month
+    ).FROM(sales) \
+     .WHERE(sales.year == 2025) \
+     .ORDER_BY(sales.product, sales.month) \
+     .run()
+
+    for row in result:
+        growth = ((row.revenue - row.prev_month) / row.prev_month * 100) if row.prev_month else 0
+        print(f"{row.product} ({row.month}): ${row.revenue} ({growth:+.1f}%)")
+```
+
+### User Activity Dashboard: Rolling Metrics
+
+```python
+async def user_activity_dashboard():
+    q = Query("postgres", database="app", host="localhost")
+    events = Table("events")
+
+    # 7-day rolling active users
+    rolling_spec = q.PARTITION_BY().ORDER_BY(events.date) \
+                    .ROWS_BETWEEN("6 PRECEDING", "CURRENT ROW")
+
+    daily_count  = q.COUNT(events.user_id).OVER(
+        q.PARTITION_BY(events.date)
+    ).AS("daily_active")
+
+    rolling_avg  = q.AVG(events.user_id).OVER(rolling_spec).AS("rolling_7d_avg")
+
+    # Percentile rank of each day
+    pct_rank = q.PERCENT_RANK().OVER(
+        q.PARTITION_BY().ORDER_BY(events.date)
+    ).AS("percentile")
+
+    result = await q.SELECT(
+        events.date,
+        daily_count,
+        rolling_avg,
+        pct_rank
+    ).FROM(events) \
+     .WHERE(events.date.BETWEEN("2025-01-01", "2025-12-31")) \
+     .run()
+
+    return result
+```
+
+### Multi-CTE Pattern: Funnel Analysis
+
+```python
+async def funnel_analysis():
+    q = Query("postgres", database="analytics", host="localhost")
+    events = Table("events")
+
+    # Step 1: Page views
+    views = q._clone().SELECT(events.user_id) \
+             .FROM(events).WHERE(events.type == "page_view")
+
+    # Step 2: Add to carts
+    carts = q._clone().SELECT(events.user_id) \
+             .FROM(events).WHERE(events.type == "add_to_cart")
+
+    # Step 3: Purchases
+    purchases = q._clone().SELECT(events.user_id) \
+                 .FROM(events).WHERE(events.type == "purchase")
+
+    # Combine with CTEs
+    v = Table("views")
+    c = Table("carts")
+    p = Table("purchases")
+
+    result = await q \
+        .WITH("views", views) \
+        .WITH("carts", carts) \
+        .WITH("purchases", purchases) \
+        .SELECT(
+            q.COUNT(v.user_id).AS("total_views"),
+            q.COUNT(c.user_id).AS("total_carts"),
+            q.COUNT(p.user_id).AS("total_purchases")
+        ) \
+        .FROM(v) \
+        .LEFT_JOIN(c, on=(v.user_id == c.user_id)) \
+        .LEFT_JOIN(p, on=(c.user_id == p.user_id)) \
+        .run()
+
+    return result
+```
+
+### Batch Insert with Transaction
+
+```python
+async def bulk_import_users(user_data):
+    q = Query("postgres", database="mydb", host="localhost")
+    users = Table("users")
+
+    q = q.BEGIN()
+
+    # Batch insert
+    await q.INSERT_INTO("users", ("name", "email", "role")) \
+           .VALUES(*[(u["name"], u["email"], u["role"]) for u in user_data]) \
+           .run()
+
+    await q.COMMIT().run()
+```
+
+
+## 19. API Method Quick Reference
+
+### Query Object Methods
+
+| Method | Returns | Description |
+|:---|:---|:---|
+| `SELECT(*args)` | New `Query` | Start/chain a SELECT statement |
+| `FROM(*args)` | `self` | Specify table sources |
+| `WHERE(condition)` | `self` | Add WHERE filter |
+| `AND(condition)` | `self` | Add additional WHERE condition |
+| `JOIN(table, on, join_type)` | `self` | INNER JOIN |
+| `LEFT_JOIN(table, on)` | `self` | LEFT JOIN |
+| `RIGHT_JOIN(table, on)` | `self` | RIGHT JOIN |
+| `FULL_JOIN(table, on)` | `self` | FULL OUTER JOIN |
+| `CROSS_JOIN(table)` | `self` | CROSS JOIN |
+| `GROUP_BY(*args)` | `self` | Group results |
+| `ORDER_BY(*args)` | `self` | Order results (-field for DESC) |
+| `LIMIT(count, offset)` | `self` | Limit result count |
+| `INSERT_INTO(table, *cols)` | New `Query` | Start INSERT statement |
+| `VALUES(*args)` | `self` | Specify VALUES for INSERT |
+| `UPDATE(table)` | New `Query` | Start UPDATE statement |
+| `SET(*args)` | `self` | SET clause for UPDATE |
+| `DELETE_FROM(table)` | New `Query` | Start DELETE statement |
+| `DELETE(table)` | New `Query` | Alias for DELETE_FROM |
+| `RETURNING(*args)` | `self` | RETURNING clause (Postgres) |
+| `WITH(alias, query)` | New `Query` | Define a CTE |
+| `WINDOW(name, spec)` | `self` | Define a named window |
+| `PARTITION_BY(*args)` | `WindowSpec` | Create window spec |
+| `BEGIN()` | New `Query` | Begin transaction |
+| `COMMIT()` | `self` | Commit transaction |
+| `AS(alias)` | `self` | Alias for query (subquery in FROM) |
+| `build()` | `str` | Compile to SQL string |
+| `print()` | `str` | Print SQL and params, return SQL |
+| `run()` | `Results` | Execute query (async) |
+| `execute()` | `Results` | Execute query (sync) |
+| `_clone()` | New `Query` | Clone with same connection, empty state |
+
+### Window Function Methods (on Query)
+
+| Method | SQL Function |
+|:---|:---|
+| `q.ROW_NUMBER()` | `ROW_NUMBER()` |
+| `q.RANK()` | `RANK()` |
+| `q.DENSE_RANK()` | `DENSE_RANK()` |
+| `q.NTILE(n)` | `NTILE(n)` |
+| `q.PERCENT_RANK()` | `PERCENT_RANK()` |
+| `q.CUME_DIST()` | `CUME_DIST()` |
+| `q.LAG(col, offset, default)` | `LAG(col, offset, default)` |
+| `q.LEAD(col, offset, default)` | `LEAD(col, offset, default)` |
+| `q.FIRST_VALUE(col)` | `FIRST_VALUE(col)` |
+| `q.LAST_VALUE(col)` | `LAST_VALUE(col)` |
+| `q.NTH_VALUE(col, n)` | `NTH_VALUE(col, n)` |
+| `q.SUM(col)` | `SUM(col)` |
+| `q.AVG(col)` | `AVG(col)` |
+| `q.COUNT(col)` | `COUNT(col)` |
+| `q.MIN(col)` | `MIN(col)` |
+| `q.MAX(col)` | `MAX(col)` |
+
+### Table Object Methods
+
+| Method | Returns | Description |
+|:---|:---|:---|
+| `Table(name, schema, alias)` | `Table` | Create table reference |
+| `.AS(alias)` / `.alias(alias)` | New `Table` | Create aliased table |
+| `.<column_name>` | `Field` | Dynamic column access |
+
+### Field Object Methods
+
+| Method | Returns | Description |
+|:---|:---|:---|
+| `.IN(list)` | `InCondition` | `field IN (...)` |
+| `.NOT_IN(list)` | `InCondition` | `field NOT IN (...)` |
+| `.LIKE(pattern)` | `Condition` | `field LIKE pattern` |
+| `.ILIKE(pattern)` | `Condition` | `field ILIKE pattern` |
+| `.BETWEEN(low, high)` | `BetweenCondition` | `field BETWEEN low AND high` |
+| `.IS_NULL()` | `str` | `field IS NULL` |
+| `.IS_NOT_NULL()` | `str` | `field IS NOT NULL` |
+| `.AS(alias)` | `str` | `field AS alias` |
+| `-field` | `OrderedField` | DESC ordering |
+| `+field` | `OrderedField` | ASC ordering |
+
+### Database Object Methods
+
+| Method | Type | Description |
+|:---|:---|:---|
+| `q.database` | Property | Access Database object |
+| `await db.connect()` | Async | Connect to database |
+| `await db.disconnect()` | Async | Disconnect from database |
+| `db.connects()` | Sync | Connect (sync wrapper) |
+| `db.disconnects()` | Sync | Disconnect (sync wrapper) |
+| `await db.tables()` | Async | Reflect all tables |
+| `await db.table(name)` | Async | Reflect single table |
+| `await db.raw(sql)` | Async | Execute raw SQL |
+| `await db.rollback()` | Async | Rollback transaction |
+| `db.rollbacks()` | Sync | Rollback (sync wrapper) |
+
+### Results/Result Object Methods
+
+| Method | Description |
+|:---|:---|
+| `for row in results` | Sync iteration |
+| `async for row in results` | Async iteration |
+| `results.row(n)` | Get row n (1-indexed) |
+| `results.cell(row, col)` | Get specific cell (1-indexed row) |
+| `results.rows(limit=n)` | Get first n rows as Results |
+| `results.seek(index)` | Reset iterator to index |
+| `bool(results)` | Check if results are non-empty |
+| `row.column_name` | Access column by attribute |
+| `row["column_name"]` | Access column by key |
+| `row.column("name")` | Access column by method |
+
+
+## 20. Important Notes & Gotchas
+
+1. **Always use `_clone()` for CTE subqueries**: Without cloning, the subquery inherits the parent's state, leading to unexpected behavior.
+
+2. **Operator precedence**: Always use parentheses when combining `&` (AND) and `|` (OR) because Python's bitwise operator precedence differs from SQL's logical operator precedence.
+   ```python
+   # CORRECT
+   (users.age > 18) & ((users.role == 'admin') | (users.role == 'mod'))
+
+   # WRONG - Python evaluates & before |
+   users.age > 18 & users.role == 'admin' | users.role == 'mod'
+   ```
+
+3. **Results are 1-indexed**: `results.row(1)` returns the first row, not `results.row(0)`.
+
+4. **Results iteration consumes**: Iterating through `Results` consumes the internal copy. Use `results.seek(0)` to reset.
+
+5. **String args vs Field args in SELECT**: Strings are passed as-is (unquoted), Field objects are auto-quoted with table prefixes. Use Fields for safety.
+   ```python
+   q.SELECT("name")         # -> SELECT name
+   q.SELECT(users.name)     # -> SELECT "users"."name"
+   ```
+
+6. **Table names in FROM are auto-quoted**: String table names in FROM are automatically quoted.
+   ```python
+   q.SELECT("*").FROM("users")  # -> FROM "users"
+   ```
+
+7. **unsafe=True bypasses parameterization**: Only use for trusted queries (e.g., DDL). Never with user input.
+
+8. **UNION and UPSERT are not yet implemented**: Both raise `NotImplementedError` with guidance on alternatives.
