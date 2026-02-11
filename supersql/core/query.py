@@ -100,7 +100,8 @@ class Query(object):
         pool_max_size: int = 10,
         pool_timeout: int = 60,
         pool_recycle: int = -1,
-        schema: Optional[Any] = None
+        schema: Optional[Any] = None,
+        _db: Optional[Any] = None
     ):
         """Query constructor
         Sets up a query engine for use by saving initialization
@@ -199,19 +200,22 @@ class Query(object):
 
         self._pause_cloning = False
         self._t_ = ''
-
-        _params = {
-            "host": self._host, 
-            "port": self._port, 
-            "user": self._user, 
-            "password": self._password, 
-            "database": self._database,
-            "pool_min_size": pool_min_size,
-            "pool_max_size": pool_max_size,
-            "pool_timeout": pool_timeout,
-            "pool_recycle": pool_recycle
-        }
-        self._db = Database(self, **_params)
+        
+        if _db:
+             self._db = _db
+        else:
+            _params = {
+                "host": self._host, 
+                "port": self._port, 
+                "user": self._user, 
+                "password": self._password, 
+                "database": self._database,
+                "pool_min_size": pool_min_size,
+                "pool_max_size": pool_max_size,
+                "pool_timeout": pool_timeout,
+                "pool_recycle": pool_recycle
+            }
+            self._db = Database(self, **_params)
 
     def _parse_connection_string(self, connection_string: str) -> dict:
         """
@@ -271,7 +275,8 @@ class Query(object):
             pool_min_size=self._pool_min_size,
             pool_max_size=self._pool_max_size,
             pool_timeout=self._pool_timeout,
-            pool_recycle=self._pool_recycle
+            pool_recycle=self._pool_recycle,
+            _db=self._db
         )
         
         if not self._pause_cloning:
@@ -383,19 +388,18 @@ class Query(object):
     async def run(self, *args, **kwargs) -> Results:
         # Build SQL and parameters before execution
         self.build()
+        
+        if self._db.connected:
+             results = await self._db.execute(self)
+             return Results(results)
+
         async with self._db as db:
             results = await db.execute(self)
             return Results(results)
 
-    async def sql(self, statement: str = None):
-        """
-        Execute raw SQL.
-        """
-        if statement:
-             async with self._db as db:
-                results = await db.raw(statement)
-                return results
-        return None
+    async def sql(self):
+        """Generates and returns raw SQL str"""
+        return self.build()
 
     def was_called(self, command):
         return command in self._callstack
