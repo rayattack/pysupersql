@@ -14,6 +14,10 @@ class Result(object):
         except AttributeError:
              raise AttributeError(f"Result has no column '{column}'")
 
+    def data(self) -> Any:
+        return self.__
+
+
     def __getitem__(self, key: str) -> Any:
         return self.__.get(key)
 
@@ -38,8 +42,11 @@ class Results(object):
         row -= 1
         return Result(self._rows[row], schema=self._schema)
     
-    def column(self, name: str, limit: Optional[int] = None) -> None:
-        pass
+    def column(self, name: str) -> List[Any]:
+        return [r.get(name) for r in self._rows]
+
+    def data(self) -> List[Any]:
+        return [r.get(None) if isinstance(r, SingleValueRecord) else r for r in self._rows]
 
     def rows(self, limit: Optional[int] = None) -> 'Results':
         return Results(self._rows[:limit], schema=self._schema)

@@ -13,6 +13,9 @@ class TestResults(TestCase):
         self.assertEqual(compare[0].__, 45)
         self.assertEqual(compare[3].__, 100)
 
+    def test_data(self):
+        self.assertEqual(self.sample.data(), [45, 56, 90, 100, 2, 10])
+
 
 class TestResult(TestCase):
     def setUp(self):
@@ -29,3 +32,14 @@ class TestResult(TestCase):
     def test_result(self):
         row = self.sample.row(2)
         self.assertEqual(row.name, 'khadija')
+
+    def test_column(self):
+        self.assertEqual(self.sample.column('age'), [1, 4])
+        self.assertEqual(self.sample.column('name'), ['aisha', 'khadija'])
+
+    def test_data(self):
+        self.assertEqual(self.sample.data(), [{'name': 'aisha', 'age': 1}, {'name': 'khadija', 'age': 4}])
+
+    def test_single_result_data(self):
+        self.assertEqual(self.sample.row(1).data(), {'name': 'aisha', 'age': 1})
+
