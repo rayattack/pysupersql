@@ -4,6 +4,7 @@ from datetime import date, datetime
 from threading import Event
 from numbers import Number
 import copy
+import re
 
 
 import logging
@@ -19,7 +20,7 @@ from supersql.errors import (
 )
 
 from .database import Database
-from .table import Table
+from .table import Table, OrderedField
 from .results import Results
 from .state import QueryState
 from .compiler import PostgresCompiler, MySQLCompiler, SQLiteCompiler
@@ -42,8 +43,10 @@ from .window import (
     WindowMin,
     WindowMax
 )
+from .functions import Functions
 
 logger = logging.getLogger('supersql.core.query')
+
 
 _loop = None
 
@@ -167,11 +170,20 @@ class Query(object):
                 raise NotImplementedError(f"{engine} is not a supersql supported engine")
             self._engine = engine
             self._dsn = dsn
-            self._user = user
-            self._password = password
-            self._host = host
-            self._port = port
-            self._database = database
+            
+            if dsn:
+                parsed = self._parse_connection_string(dsn)
+                self._user = user or parsed.get('user')
+                self._password = password or parsed.get('password')
+                self._host = host or parsed.get('host')
+                self._port = port or parsed.get('port')
+                self._database = database or parsed.get('database')
+            else:
+                self._user = user
+                self._password = password
+                self._host = host
+                self._port = port
+                self._database = database
         self._silent = silent
         self._state = QueryState()
         
@@ -201,8 +213,7 @@ class Query(object):
         self._pause_cloning = False
         self._t_ = ''
         
-        if _db:
-             self._db = _db
+        if _db: self._db = _db
         else:
             _params = {
                 "host": self._host, 
@@ -216,8 +227,10 @@ class Query(object):
                 "pool_recycle": pool_recycle
             }
             self._db = Database(self, **_params)
+        self.FX = Functions()
 
     def _parse_connection_string(self, connection_string: str) -> dict:
+
         """
         Parse a connection string like postgres://user:password@host:port/database
 
@@ -227,7 +240,6 @@ class Query(object):
         Returns:
             Dictionary with parsed connection parameters
         """
-        import re
 
         if connection_string.startswith('sqlite:'):
              path_match = re.match(r'^sqlite://(.*)$', connection_string)
@@ -240,18 +252,11 @@ class Query(object):
                      'user': None,
                      'password': None
                  }
-
         pattern = r'^(\w+)://(?:([^:]+)(?::([^@]+))?@)?([^:/]+)(?::(\d+))?/(.+)$'
         match = re.match(pattern, connection_string)
-
-        if not match:
-            raise ValueError(f"Invalid connection string format: {connection_string}")
-
+        if not match: raise ValueError(f"Invalid connection string format: {connection_string}")
         engine, user, password, host, port, database = match.groups()
-
-        if engine == 'postgresql':
-            engine = 'postgres'
-
+        if engine == 'postgresql': engine = 'postgres'
         return {
             'engine': engine,
             'user': user,
@@ -287,7 +292,6 @@ class Query(object):
             new_query._from = self._from.copy()
             new_query._args = self._args.copy()
             return new_query
-            
         return self
 
     def _chain_state(self):
@@ -343,21 +347,18 @@ class Query(object):
         return asyncio_run(self.run(*args, **kwargs))
 
     def get_tablename(self, table: Union[str, Table, None]) -> Optional[str]:
-        if hasattr(table, '__tn__'):
-            return table.__tn__()
+        if hasattr(table, '__tn__'): return table.__tn__()
         elif isinstance(table, str):
             # Extract table name from string "table.column" or "schema.table.column"
             # Logic: last part is column, second to last is table.
             processed = table.split(".")
             parts = len(processed)
-            if parts >= 2:
-                # e.g. "users.id" -> "users"
-                return processed[-2]
+            # e.g. "users.id" -> "users"
+            if parts >= 2: return processed[-2]
             return None
         else:
             # Field object
-            if hasattr(table, 'table') and table.table:
-                return table.table.__tn__()
+            if hasattr(table, 'table') and table.table: return table.table.__tn__()
             return None
     
     def build(self) -> str:
@@ -365,9 +366,7 @@ class Query(object):
         Compiles the current state to a SQL string and updates self._args w/ parameters.
         Returns the SQL string.
         """
-        if not self._state.statement_type:
-            return ""
-            
+        if not self._state.statement_type: return ""
         sql, params = self._compiler.compile(self._state)
         # Update bound parameters
         self._args = params
@@ -381,8 +380,7 @@ class Query(object):
         """
         sql = self.build()
         print(sql)
-        if self._args:
-            print(f"Parameters: {self._args}")
+        if self._args: print(f"Parameters: {self._args}")
         return sql
     
     async def run(self, *args, **kwargs) -> Results:
@@ -452,8 +450,7 @@ class Query(object):
         
         if isinstance(table, str): tablename = f'"{table}"'
         elif isinstance(table, Table): tablename = table.__tn__()
-        else:
-             raise ArgumentError(f"DELETE FROM expects a table name or Table object, got {type(table)}")
+        else: raise ArgumentError(f"DELETE FROM expects a table name or Table object, got {type(table)}")
         
         this._state.from_sources.append(tablename)
         return this
@@ -462,17 +459,14 @@ class Query(object):
         return self
 
     def FROM(self, *args, **kwargs):
-        if not args:
-            raise ArgumentError("FROM requires at least one table argument")
-
+        if not args: raise ArgumentError("FROM requires at least one table argument")
         self._callstack.append(_FROM_)
 
         froms_to_add = []
         for source in args:
             _from = ""
-            if isinstance(source, str):
-                # Quote string table names in FROM
-                _from = f'"{source}"'
+            # Quote string table names in FROM
+            if isinstance(source, str): _from = f'"{source}"'
             elif isinstance(source, Query):
                 _a = source._alias
                 # Quote alias if present
@@ -481,11 +475,8 @@ class Query(object):
             elif hasattr(source, '__tn__'): # Table
                 # Use Table's own string representation which handles quoting and aliasing
                 _from = str(source)
-            else:
-                 raise ArgumentError(f"FROM expects string, Query, or Table, got {type(source)}")
-
+            else: raise ArgumentError(f"FROM expects string, Query, or Table, got {type(source)}")
             froms_to_add.append(_from)
-
         self._state.from_sources.extend(froms_to_add)
         
         # Legacy support
@@ -497,12 +488,10 @@ class Query(object):
         Add GROUP BY clause to the query.
         """
         self._callstack.append('GROUP_BY')
-        
         cols = []
         for arg in args:
             if isinstance(arg, str): cols.append(arg)
             else: cols.append(str(arg))
-            
         if cols: self._state.groups.extend(cols)
         return self
 
@@ -518,33 +507,26 @@ class Query(object):
 
         if isinstance(table, Table): t = table.__tn__()
         else: t = f'"{table}"'
-            
         this._state.insert_table = t
         
         # Flatten args
-        if len(args) == 1 and isinstance(args[0], (list, tuple)):
-            cols = list(args[0])
-        else:
-            cols = list(args)
+        if len(args) == 1 and isinstance(args[0], (list, tuple)): cols = list(args[0])
+        else: cols = list(args)
         
         # Determine if cols are strings or Fields
         quoted_cols = []
         for c in cols:
-            if isinstance(c, str):
-                quoted_cols.append(f'"{c}"')
-            else:
-                quoted_cols.append(str(c))
-            
+            if isinstance(c, str): quoted_cols.append(f'"{c}"')
+            else: quoted_cols.append(str(c))
         this._state.insert_columns = quoted_cols
         return this
 
-    def JOIN(self, table, on=None, join_type='INNER'):
+    def JOIN(self, table, join_type='INNER'):
         """
         Add a JOIN clause to the query.
 
         Args:
             table: Table name (str) or Table object to join
-            on: Join condition (str or column comparison)
             join_type: Type of join - 'INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS'
         
         Returns:
@@ -564,38 +546,26 @@ class Query(object):
         
         # Build JOIN clause
         join_sql = f"{join_type} JOIN {tablename}"
-        if alias:
-            join_sql += f" AS {alias}"
-        
-        # Add ON condition if provided
-        if on is not None:
-            if isinstance(on, str):
-                join_sql += f" ON {on}"
-            else:
-                # Column comparison object
-                join_sql += f" ON {on.print(self)}"
-        
-
-        
+        if alias: join_sql += f' AS "{alias}"'
         
         self._state.joins.append(join_sql)
         return self
     
-    def LEFT_JOIN(self, table, on=None):
+    def LEFT_JOIN(self, table):
         """Convenience method for LEFT JOIN."""
-        return self.JOIN(table, on, join_type='LEFT')
+        return self.JOIN(table, join_type='LEFT')
     
-    def RIGHT_JOIN(self, table, on=None):
+    def RIGHT_JOIN(self, table):
         """Convenience method for RIGHT JOIN."""
-        return self.JOIN(table, on, join_type='RIGHT')
+        return self.JOIN(table, join_type='RIGHT')
     
-    def FULL_JOIN(self, table, on=None):
+    def FULL_JOIN(self, table):
         """Convenience method for FULL OUTER JOIN."""
-        return self.JOIN(table, on, join_type='FULL OUTER')
+        return self.JOIN(table, join_type='FULL OUTER')
     
     def CROSS_JOIN(self, table):
         """Convenience method for CROSS JOIN (no ON clause)."""
-        return self.JOIN(table, on=None, join_type='CROSS')
+        return self.JOIN(table, join_type='CROSS')
 
     def LIMIT(self, count, offset=None):
         """
@@ -613,6 +583,34 @@ class Query(object):
         if offset is not None: self._state.offset = offset
         return self
 
+    def OFFSET(self, offset):
+        """
+        Add OFFSET clause to the query.
+
+        Args:
+            offset: Number of rows to skip
+        
+        Returns:
+            Query: self for method chaining
+        """
+        self._callstack.append('OFFSET')
+        self._state.offset = offset
+        return self
+    
+    def ON(self, on):
+        """
+        Add ON clause to the last JOIN.
+        """
+        self._callstack.append('ON')
+        if not self._state.joins:
+            raise ProgrammingError("ON clause must follow a JOIN clause")
+        
+        # Append ON condition to the last join
+        last_join = self._state.joins.pop()
+        condition_str = str(on)
+        self._state.joins.append(f"{last_join} ON {condition_str}")
+        return self
+
     def ORDER_BY(self, *args):
         """
         Add ORDER BY clause to the query.
@@ -625,16 +623,11 @@ class Query(object):
         order_parts = []
         for arg in args:
             if isinstance(arg, str):
-                if arg.startswith('-'):
-                    order_parts.append(f"{arg[1:]} DESC")
-                else:
-                    order_parts.append(f"{arg} ASC")
-            else:
-                # Column/Field object
-                order_parts.append(f"{str(arg)} ASC")
-                
-        if order_parts:
-            self._state.orders.extend(order_parts)
+                if arg.startswith('-'): order_parts.append(f"{arg[1:]} DESC")
+                else: order_parts.append(f"{arg} ASC")
+            elif isinstance(arg, OrderedField): order_parts.append(str(arg))
+            else: order_parts.append(f"{str(arg)} ASC")  # Column/Field object
+        if order_parts: self._state.orders.extend(order_parts)
         return self
 
     def RETURNING(self, *args):
@@ -642,16 +635,11 @@ class Query(object):
         parsed = []
 
         for arg in args:
-            if isinstance(arg, Table):
-                col = arg.__tn__()
-            elif isinstance(arg, str):
-                col = arg
-            else: #Field Object
-                col = str(arg)
+            if isinstance(arg, Table): col = arg.__tn__()
+            elif isinstance(arg, str): col = arg
+            else: col = str(arg)  # Field Object
             parsed.append(col)
-
         parsed = parsed or ['*']
-
         self._state.returning = parsed
         return self
 
@@ -659,19 +647,14 @@ class Query(object):
         this = self._clone()
         this._consequence = DQL
         this._callstack.append(SELECT)
-        
         if this._state.statement_type in ('UPDATE', 'DELETE', 'BEGIN', 'COMMIT'):
             this._chain_state()
             this._state.statement_type = 'SELECT'
-        elif this._state.statement_type != 'INSERT':
-            this._state.statement_type = 'SELECT'
-
+        elif this._state.statement_type != 'INSERT': this._state.statement_type = 'SELECT'
         num_of_args = len(args)
         cols = []
         
-        if num_of_args == 0:
-            separator = "*" 
-            cols.append("*")
+        if num_of_args == 0: cols.append("*")
         elif num_of_args == 1:
             arg = args[0]
             if isinstance(arg, str):
@@ -689,20 +672,15 @@ class Query(object):
                 cols.append(arg)
             elif hasattr(arg, 'table'):
                 # Field object
-                if arg.table:
-                    this._tablenames.add(arg.table.__tn__())
+                if arg.table: this._tablenames.add(arg.table.__tn__())
                 cols.append(str(arg))
-            else:
-                 # Fallback
-                 cols.append(str(arg))
+            else: cols.append(str(arg))  # Fallback
         else:
             unique_tablenames = set([this.get_tablename(table) for table in args])
             # Add found tables to tablenames
             for t in unique_tablenames:
                 if t: this._tablenames.add(t)
-            
             is_heterogeneous = len(unique_tablenames) > 1
-
             for member in args:
                 if isinstance(member, str):
                     cols.append(member)
@@ -717,13 +695,9 @@ class Query(object):
                     cols.append(member)
                 elif hasattr(member, 'table'):
                     # Field object
-                    if member.table:
-                        this._tablenames.add(member.table.__tn__())
+                    if member.table: this._tablenames.add(member.table.__tn__())
                     cols.append(str(member))
-                else:
-                    # Fallback for other objects
-                    cols.append(str(member))
-
+                else: cols.append(str(member))  # Fallback for other objects
         this._state.selects = cols
         return this
 
@@ -731,15 +705,10 @@ class Query(object):
         self._callstack.append('SET')
         updates = []
         for ax in args:
-            if hasattr(ax, 'compile'):
-                updates.append(ax)
-            elif isinstance(ax, (str, Number)):
-                updates.append(ax)
-            elif hasattr(ax, 'print'):
-                updates.append(ax.print(self))
-            else:
-                 updates.append(str(ax))
-        
+            if hasattr(ax, 'compile'): updates.append(ax)
+            elif isinstance(ax, (str, Number)): updates.append(ax)
+            elif hasattr(ax, 'print'): updates.append(ax.print(self))
+            else: updates.append(str(ax))
         self._state.updates.extend(updates)
         return self
 
@@ -788,7 +757,6 @@ class Query(object):
         else:
              # Multiple atomic args or single atomic arg -> one row
              self._state.insert_values.append(args)
-
         return self
 
     def WHERE(self, condition):
@@ -806,7 +774,6 @@ class Query(object):
         # Use conditionator to get the string OR Condition object
         cond = self._conditionator(condition)
         self._state.wheres.append(cond)
-        
         return self
 
     def WITHOUT(self, *args):
@@ -827,8 +794,6 @@ class Query(object):
         this._state.ctes.append((alias, query))
         return this
 
-    # Window Function Methods
-    
     def PARTITION_BY(self, *args):
         """
         Create a WindowSpec with PARTITION BY clause.

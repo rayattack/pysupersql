@@ -123,9 +123,11 @@ class Field(object):
         return str(self)
 
     def __eq__(self, other):
+        if other is None: return self.IS_NULL()
         return Condition(self, '=', other)
 
     def __ne__(self, other):
+        if other is None: return self.IS_NOT_NULL()
         return Condition(self, '<>', other)
 
     def __gt__(self, other):

@@ -17,12 +17,32 @@ class Result(object):
     def data(self) -> Any:
         return self.__
 
-
     def __getitem__(self, key: str) -> Any:
         return self.__.get(key)
+    
+    def __iter__(self):
+        # Allow dict(result) to work
+        return iter(self.__)
+
+    def keys(self):
+        return self.__.keys()
+
+    def values(self):
+        return self.__.values()
+
+    def items(self):
+        return self.__.items()
 
     def __repr__(self):
         return f"<Result {self.__}>"
+
+
+class SingleValueRecord(object):
+    def __init__(self, record: Any):
+        self._single_value_record = record
+
+    def get(self, key: Any) -> Any:
+        return self._single_value_record
 
 
 class Results(object):
@@ -33,10 +53,47 @@ class Results(object):
         self._copy: List[Any] = records[:]
         self._schema = schema
 
-    def cell(self, row: int, col: str) -> Any:
-        row -= 1
-        record = self._rows[row] 
-        return record.get(col)
+    def first(self) -> Optional[Result]:
+        """Returns the first Result object or None if empty."""
+        if not self._rows: return None
+        return Result(self._rows[0], schema=self._schema)
+
+    def cell(self, row: Optional[int] = None, col: Optional[str] = None) -> Any:
+        """
+        Returns the value of the first cell (row 0, col 0) or None if no args provided.
+        If row and col are provided, returns the value at that specific position (legacy).
+        """
+        if row is not None and col is not None:
+             # Legacy behavior
+             record = self._rows[row] 
+             return record.get(col)
+
+        if not self._rows: return None
+        first_row = self._rows[0]
+
+        # If it's a SingleValueRecord, return it directly
+        if isinstance(first_row, SingleValueRecord):
+            return first_row.get(None)
+        # If it's a dict/Record, return the first value found
+        if hasattr(first_row, 'values'):
+             # This assumes order is preserved (Python 3.7+)
+             return next(iter(first_row.values())) if first_row else None
+        
+        # Fallback: return the row itself (assuming it's a primitive value)
+        return first_row
+
+    def cells(self) -> List[Any]:
+        """Returns a list of values from the first column of all rows."""
+        vals = []
+        for r in self._rows:
+            if isinstance(r, SingleValueRecord):
+                vals.append(r.get(None))
+            elif hasattr(r, 'values'):
+                vals.append(next(iter(r.values())) if r else None)
+            else:
+                # Primitive value
+                vals.append(r)
+        return vals
 
     def row(self, row: int) -> Result:
         row -= 1
@@ -49,6 +106,7 @@ class Results(object):
         return [r.get(None) if isinstance(r, SingleValueRecord) else r for r in self._rows]
 
     def rows(self, limit: Optional[int] = None) -> 'Results':
+        if limit is None: return Results(self._rows, schema=self._schema)
         return Results(self._rows[:limit], schema=self._schema)
     
     def seek(self, index: int = 0) -> None:
@@ -58,7 +116,11 @@ class Results(object):
         return bool(self._rows)
 
     def __iter__(self) -> Iterator[Result]:
-        return self
+        # Return a new iterator to avoid consuming the main copy/pointer
+        return iter([Result(r, schema=self._schema) for r in self._rows])
+
+    def __getitem__(self, index: int) -> Result:
+        return Result(self._rows[index], schema=self._schema)
 
     def __next__(self) -> Result:
         if not self._copy: raise StopIteration
@@ -70,11 +132,3 @@ class Results(object):
     async def __anext__(self) -> Result:
         if not self._copy: raise StopAsyncIteration
         return Result(self._copy.pop(0), schema=self._schema)
-
-
-class SingleValueRecord(object):
-    def __init__(self, record: Any):
-        self._single_value_record = record
-
-    def get(self, key: Any) -> Any:
-        return self._single_value_record

@@ -27,7 +27,7 @@ class TestCTE(TestCase):
         
         q_main = self.q._clone()
         q_main = q_main.WITH('cte1', q1).WITH('cte2', q2)
-        q_main = q_main.SELECT('*').FROM('cte1').JOIN('cte2', on='cte1.a = cte2.b')
+        q_main = q_main.SELECT('*').FROM('cte1').JOIN('cte2').ON('cte1.a = cte2.b')
         
         # Note: Compiler joins CTEs with newline before main statement? 
         # Compiler logic: "\n".join(parts). parts = ["WITH ...", "SELECT ..."].

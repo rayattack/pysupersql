@@ -22,8 +22,8 @@ class TestResult(TestCase):
         self.sample = Results([{'name': 'aisha', 'age': 1}, {'name': 'khadija', 'age': 4}])
     
     def test_result_access(self):
-        self.assertEqual(self.sample.cell(1, 'age'), 1)
-        self.assertEqual(self.sample.cell(2, 'name'), 'khadija')
+        self.assertEqual(self.sample.cell(0, 'age'), 1)
+        self.assertEqual(self.sample.cell(1, 'name'), 'khadija')
 
     def test_result_instantiation(self):
         row = self.sample.row(1)

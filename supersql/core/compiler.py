@@ -47,6 +47,7 @@ class SQLCompiler(ABC):
         
         return "; ".join(compiled_parts), bound_parameters
 
+
     def _compile_single(self, state: QueryState) -> tuple[str, list]:
         # 0. Transaction management
         if state.statement_type == 'BEGIN':

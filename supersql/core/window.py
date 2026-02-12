@@ -126,18 +126,31 @@ class WindowFunction:
         self.args = args
         self.over = over
         self.alias = None
+        self._filter = None
+        self._distinct = False
+
+    def DISTINCT(self):
+        """
+        Add DISTINCT to the function call.
+        e.g. COUNT(DISTINCT col)
+        """
+        self._distinct = True
+        return self
+
+    def FILTER(self, condition):
+        """
+        Add FILTER (WHERE ...) clause.
+        """
+        self._filter = condition
+        return self
+
     
-    def OVER(self, spec: Union[str, WindowSpec]):
+    def OVER(self, spec: Union[str, WindowSpec] = None):
         """
-        Set the OVER clause for this window function.
-        
-        Args:
-            spec: WindowSpec object or window name (string)
-        
-        Returns:
-            Self for method chaining
+        Define window for the function.
+        If spec is None, defaults to empty window OVER ().
         """
-        self.over = spec
+        self.over = spec if spec is not None else WindowSpec()
         return self
     
     def AS(self, alias: str):
@@ -163,6 +176,8 @@ class WindowFunction:
         params = []
         
         # Build function call
+        distinct_str = "DISTINCT " if self._distinct else ""
+        
         if self.args:
             arg_strs = []
             for arg in self.args:
@@ -174,33 +189,46 @@ class WindowFunction:
                     arg_strs.append('NULL')
                 else:
                     arg_strs.append(str(arg))
-            func_call = f"{self.name}({', '.join(arg_strs)})"
+            func_call = f"{self.name}({distinct_str}{', '.join(arg_strs)})"
         else:
             func_call = f"{self.name}()"
         
-        # Build OVER clause
-        if isinstance(self.over, str):
-            # Named window reference
-            over_clause = f"OVER {self.over}"
-        elif isinstance(self.over, WindowSpec):
-            # Inline window specification
-            spec_sql, spec_params = self.over.compile(compiler)
-            if spec_sql:
-                over_clause = f"OVER ({spec_sql})"
+        # Build FILTER clause
+        filter_clause = ""
+        if self._filter:
+            # We need to compile the condition. 
+            # If the condition object has a compile method (it should), use it.
+            # Otherwise treat as string.
+            if compiler and hasattr(self._filter, 'compile'):
+                f_sql, f_params = self._filter.compile(compiler)
+                filter_clause = f" FILTER (WHERE {f_sql})"
+                params.extend(f_params)
             else:
-                over_clause = "OVER ()"
-            params.extend(spec_params)
-        else:
-            # No OVER clause specified
-            over_clause = "OVER ()"
-        
-        sql = f"{func_call} {over_clause}"
+                filter_clause = f" FILTER (WHERE {self._filter})"
+
+        # Build OVER clause (Optional now)
+        over_clause = ""
+        if self.over:
+            if isinstance(self.over, str):
+                # Named window reference
+                over_clause = f" OVER {self.over}"
+            elif isinstance(self.over, WindowSpec):
+                # Inline window specification
+                spec_sql, spec_params = self.over.compile(compiler)
+                if spec_sql:
+                    over_clause = f" OVER ({spec_sql})"
+                else:
+                    over_clause = " OVER ()"
+                params.extend(spec_params)
+            
+        sql = f"{func_call}{over_clause}{filter_clause}"
         
         # Add alias if specified
         if self.alias:
             sql = f"{sql} AS {self.alias}"
         
         return sql, params
+
     
     def __str__(self):
         """String representation for use in SELECT."""
