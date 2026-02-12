@@ -1,5 +1,7 @@
 ## 2026.2.6
 
+- Added `SELECT_DISTINCT` method to `Query` class
+- Fixed `Query.sql()` being async (it is now synchronous)
 - Fixed race condition in SQLite `Engine.connection()` (Issue 44)
 - Fixed `Query` cloning to correctly share `Database` instance (Issue 42)
 - Added bounds checking to `Results.row()` and `.cell()` (Issue 41)
