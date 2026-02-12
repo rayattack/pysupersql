@@ -1,3 +1,16 @@
+## 2026.2.6
+
+- Fixed race condition in SQLite `Engine.connection()` (Issue 44)
+- Fixed `Query` cloning to correctly share `Database` instance (Issue 42)
+- Added bounds checking to `Results.row()` and `.cell()` (Issue 41)
+- Improved `Database` initialization exception handling (Issue 49)
+- Fixed SQLite connection string regex to handle paths correctly (Issue 43)
+- Standardized decorator naming in SQLite engine (Issue 46)
+- Logic fixes in `Query` class: removed dead code, fixed indentation, cleaned up `WHERE` (Issues 51, 52, 54)
+- Added missing tests for `Database` class (Issue 53)
+- Fixed generic exception swallowing in SQLite pool close (Issue 45)
+- Removed unused imports and empty requirements.txt (Issues 47, 48)
+
 ## 2026.2.5
 
 - Added support for fluent aggregate functions (`.FILTER()`, `.DISTINCT()`)

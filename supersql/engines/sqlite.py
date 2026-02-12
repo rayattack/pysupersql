@@ -14,7 +14,6 @@ validate_vendor_dependencies("sqlite")
 import aiosqlite
 
 logger = logging.getLogger('supersql.engines.sqlite')
-from sqlite3.dbapi2 import Cursor
 
 
 if(TYPE_CHECKING):
@@ -24,22 +23,8 @@ CONNECTED_MESSAGE = "A connection already exists"
 DISCONNECTED_MESSAGE = "No connection found to database"
 
 
-def connected(f):
-    if inspect.iscoroutinefunction(f):
-        @wraps(f)
-        async def wrapper(*args, **kwargs):
-            assert args[0]._connection is not None, DISCONNECTED_MESSAGE
-            response = await f(*args, **kwargs)
-            return response
-    else:
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            assert args[0]._connection is not None, DISCONNECTED_MESSAGE
-            return f(*args, **kwargs)
-    return wrapper
-
-
-def disconnected(f):
+def connectable(f):
+    """Decorator asserting that a connection does NOT exist (ready to connect)."""
     if inspect.iscoroutinefunction(f):
         @wraps(f)
         async def wrapper(*args, **kwargs): 
@@ -50,6 +35,22 @@ def disconnected(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
             assert args[0]._connection is None, CONNECTED_MESSAGE
+            return f(*args, **kwargs)
+    return wrapper
+
+
+def disconnectable(f):
+    """Decorator asserting that a connection DOES exist (ready to disconnect/use)."""
+    if inspect.iscoroutinefunction(f):
+        @wraps(f)
+        async def wrapper(*args, **kwargs):
+            assert args[0]._connection is not None, DISCONNECTED_MESSAGE
+            response = await f(*args, **kwargs)
+            return response
+    else:
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            assert args[0]._connection is not None, DISCONNECTED_MESSAGE
             return f(*args, **kwargs)
     return wrapper
 
@@ -85,8 +86,10 @@ class Engine(IEngine):
         return "?"
 
     def connection(self) -> "Connection":
-        if self.pool is None:
-             self.pool = Pool(self._url, **self._config)
+        # Issue 44: Simple check to avoid recreating if exists, though strictly 
+        # not thread-safe without locks in a threaded env. In asyncio single-thread,
+        # this is atomic.
+        if self.pool is None: self.pool = Pool(self._url, **self._config)
         return Connection(self.pool)
     
 
@@ -156,8 +159,7 @@ class Pool(object):
                 conn = self._queue.get_nowait()
                 await conn.__aexit__(None, None, None)
                 count += 1
-            except Exception:
-                pass
+            except Exception as e: logger.warning(f"Error closing SQLite connection: {e}")
         self._current_size = 0
         logger.debug(f"Closed {count} SQLite connections in pool")
 
@@ -167,28 +169,28 @@ class Connection(IConnection):
         self._pool = pool
         self._connection: typing.Union[None, aiosqlite.Connection] = None
 
-    @disconnected
+    @connectable
     async def begin(self) -> None:
         self._connection = await self._pool.acquire()
 
-    @connected
+    @disconnectable
     async def done(self) -> None:
         await self._pool.release(self._connection)
         self._connection = None
     
-    @connected
+    @disconnectable
     async def execute(self, query: 'Query') -> typing.Any:
         async with self._connection.execute(query.print()) as cursor:
             results = await cursor.fetchall()
             return results
 
-    @connected
+    @disconnectable
     async def fetchall(self, query: 'Query') -> typing.List[typing.Mapping]:
         async with self._connection.execute(query.print()) as cursor:
             self._connection.row_factory = aiosqlite.Row
             results = await cursor.fetchall()
             return results
 
-    @connected
+    @disconnectable
     async def fetchmany(self, limit: int) -> typing.Any:
         pass

@@ -125,7 +125,8 @@ class SQLCompiler(ABC):
                 select_parts.append(str(s))
         
         select_str = ", ".join(select_parts)
-        parts.append(f"SELECT {select_str}")
+        if state.distinct: parts.append(f"SELECT DISTINCT {select_str}")
+        else: parts.append(f"SELECT {select_str}")
         
         # FROM
         if state.from_sources:

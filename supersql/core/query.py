@@ -188,13 +188,13 @@ class Query(object):
         self._state = QueryState()
         
         if self._engine in ('postgres', 'postgresql'):
-             self._compiler = PostgresCompiler()
+            self._compiler = PostgresCompiler()
         elif self._engine == 'mysql':
-             self._compiler = MySQLCompiler()
+            self._compiler = MySQLCompiler()
         elif self._engine == 'sqlite':
-             self._compiler = SQLiteCompiler()
+            self._compiler = SQLiteCompiler()
         else:
-             self._compiler = PostgresCompiler() 
+            self._compiler = PostgresCompiler() 
               
         self._pristine = True
         self._disparity = 0
@@ -242,11 +242,16 @@ class Query(object):
         """
 
         if connection_string.startswith('sqlite:'):
+             # Distinguish between sqlite://file.db (relative/builtin) and sqlite:///file.db (absolute)
+             # But the regex r'^sqlite://(.*)$' captures everything after sqlite://
+             # Example: sqlite://mydb.db -> mydb.db
+             # Example: sqlite:///absolute/path/mydb.db -> /absolute/path/mydb.db
              path_match = re.match(r'^sqlite://(.*)$', connection_string)
              if path_match:
+                 db_path = path_match.group(1)
                  return {
                      'engine': 'sqlite',
-                     'database': path_match.group(1),
+                     'database': db_path,
                      'host': None,
                      'port': None,
                      'user': None,
@@ -281,7 +286,7 @@ class Query(object):
             pool_max_size=self._pool_max_size,
             pool_timeout=self._pool_timeout,
             pool_recycle=self._pool_recycle,
-            _db=self._db
+            _db=self._db  # Share the existing database instance
         )
         
         if not self._pause_cloning:
@@ -311,7 +316,8 @@ class Query(object):
 
     def _conditionator(self, condition):
         # Allow Condition objects to pass through to compiler
-        return condition
+        try: return condition
+        except AttributeError: return condition
 
     @property
     def args(self):
@@ -395,7 +401,7 @@ class Query(object):
             results = await db.execute(self)
             return Results(results)
 
-    async def sql(self):
+    def sql(self):
         """Generates and returns raw SQL str"""
         return self.build()
 
@@ -498,7 +504,7 @@ class Query(object):
     def INSERT_INTO(self, table: str, *args):
         this = self._clone()
         this._consequence = DML
-        this._insert_args = len(args) # only available when insert into is the sql command
+        # this._insert_args = len(args) # only available when insert into is the sql command
         this._callstack.append(INSERT_INTO_)
         this._pause_cloning = True
         
@@ -701,6 +707,14 @@ class Query(object):
         this._state.selects = cols
         return this
 
+    def SELECT_DISTINCT(self, *args):
+        """
+        Similar to SELECT but adds DISTINCT keyword to the query.
+        """
+        this = self.SELECT(*args)
+        this._state.distinct = True
+        return this
+
     def SET(self, *args):
         self._callstack.append('SET')
         updates = []
@@ -770,8 +784,6 @@ class Query(object):
                 self = self.FROM(*tablenames)
 
         self._callstack.append(WHERE)
-        
-        # Use conditionator to get the string OR Condition object
         cond = self._conditionator(condition)
         self._state.wheres.append(cond)
         return self

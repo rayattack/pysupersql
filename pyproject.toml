@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "supersql"
-version = "2026.2.5"
+version = "2026.2.6"
 description = "Thin wrapper on top of SQL that enables you write SQL code in python easily"
 authors = ["Raymond Ortserga <codesage@live.com>"]
 license = "MIT"

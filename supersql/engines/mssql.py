@@ -11,7 +11,7 @@ validate_vendor_dependencies("mssql")
 
 # Import SQL Server dependencies after validation
 import aioodbc
-import pyodbc
+# import pyodbc # Unused
 
 if TYPE_CHECKING:
     from supersql.core.query import Query

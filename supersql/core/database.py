@@ -55,8 +55,8 @@ class Database(object):
         try:
             self._engine = self._get_engine_instance(query, **kwargs)
             logger.debug(f"Initialized Database with engine for: {query._engine}")
-        except Exception:
-            logger.error(f"Failed to initialize Database engine for: {query._engine}")
+        except Exception as e:
+            logger.exception(f"Failed to initialize Database engine for: {query._engine} - {e}")
             raise
             
         self.connected: bool = False

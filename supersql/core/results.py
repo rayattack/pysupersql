@@ -65,6 +65,7 @@ class Results(object):
         """
         if row is not None and col is not None:
              # Legacy behavior
+             if row < 0 or row >= len(self._rows): return None
              record = self._rows[row] 
              return record.get(col)
 
@@ -72,14 +73,10 @@ class Results(object):
         first_row = self._rows[0]
 
         # If it's a SingleValueRecord, return it directly
-        if isinstance(first_row, SingleValueRecord):
-            return first_row.get(None)
         # If it's a dict/Record, return the first value found
-        if hasattr(first_row, 'values'):
-             # This assumes order is preserved (Python 3.7+)
-             return next(iter(first_row.values())) if first_row else None
-        
-        # Fallback: return the row itself (assuming it's a primitive value)
+        if isinstance(first_row, SingleValueRecord): return first_row.get(None)
+        # This assumes order is preserved (Python 3.7+)
+        if hasattr(first_row, 'values'): return next(iter(first_row.values())) if first_row else None
         return first_row
 
     def cells(self) -> List[Any]:
@@ -97,6 +94,7 @@ class Results(object):
 
     def row(self, row: int) -> Result:
         row -= 1
+        if row < 0 or row >= len(self._rows): raise IndexError("Result index out of range")
         return Result(self._rows[row], schema=self._schema)
     
     def column(self, name: str) -> List[Any]:
