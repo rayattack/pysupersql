@@ -58,5 +58,10 @@ class QueryState:
     # RETURNING
     returning: List[str] = field(default_factory=list)
 
+    # ON CONFLICT
+    on_conflict_target: List[str] = field(default_factory=list)
+    on_conflict_action: Optional[str] = None  # DO NOTHING or DO UPDATE
+    on_conflict_updates: List[str] = field(default_factory=list)
+
     # Metadata
     aliases: dict = field(default_factory=dict)

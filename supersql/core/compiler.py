@@ -199,6 +199,16 @@ class SQLCompiler(ABC):
              parts.append(sql)
              parameters.extend(params)
              
+        if state.on_conflict_target:
+             target = ", ".join(state.on_conflict_target)
+             action = state.on_conflict_action
+             parts.append(f"ON CONFLICT ({target})")
+             if action == 'DO NOTHING':
+                 parts.append("DO NOTHING")
+             elif action == 'DO UPDATE':
+                 updates = ", ".join(state.on_conflict_updates)
+                 parts.append(f"DO UPDATE SET {updates}")
+
         if state.returning:
             parts.append(f"RETURNING {', '.join(state.returning)}")
             

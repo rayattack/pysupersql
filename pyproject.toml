@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "supersql"
-version = "2026.2.6"
+version = "2026.2.8"
 description = "Thin wrapper on top of SQL that enables you write SQL code in python easily"
 authors = ["Raymond Ortserga <codesage@live.com>"]
 license = "MIT"
@@ -20,8 +20,8 @@ python = "^3.6"
 [tool.poetry.group.dev.dependencies]
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 supersql = 'supersql:main'
@@ -33,8 +33,4 @@ postgresql = ["asyncpg"]  # alias for postgres
 sqlite = ["aiosqlite"]
 mssql = ["aioodbc", "pyodbc"]
 sqlserver = ["aioodbc", "pyodbc"]  # alias for mssql
-oracle = ["cx_Oracle"]
 oracledb = ["oracledb"]  # modern oracle driver
-mariadb = ["aiomysql"]  # uses same driver as mysql
-athena = ["PyAthena"]
-presto = ["presto-python-client"]

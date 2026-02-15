@@ -501,7 +501,13 @@ class Query(object):
         if cols: self._state.groups.extend(cols)
         return self
 
-    def INSERT_INTO(self, table: str, *args):
+    def INSERT(self, table: Union[str, Table], *args):
+        """
+        Alias for INSERT_INTO.
+        """
+        return self.INSERT_INTO(table, *args)
+
+    def INSERT_INTO(self, table: Union[str, Table], *args):
         this = self._clone()
         this._consequence = DML
         # this._insert_args = len(args) # only available when insert into is the sql command
@@ -522,10 +528,72 @@ class Query(object):
         # Determine if cols are strings or Fields
         quoted_cols = []
         for c in cols:
-            if isinstance(c, str): quoted_cols.append(f'"{c}"')
-            else: quoted_cols.append(str(c))
+            if isinstance(c, str): 
+                quoted_cols.append(f'"{c}"')
+            elif hasattr(c, 'name'):
+                # Handle Field objects or similar
+                quoted_cols.append(f'"{c.name}"')
+            else: 
+                # Fallback
+                quoted_cols.append(str(c))
         this._state.insert_columns = quoted_cols
         return this
+
+    def ON_CONFLICT(self, *args):
+        """
+        Add ON CONFLICT clause.
+        args: list of columns to check for conflict
+        """
+        self._callstack.append('ON_CONFLICT')
+        cols = []
+        for arg in args:
+            if isinstance(arg, str): cols.append(arg)
+            else: cols.append(str(arg))
+        self._state.on_conflict_target = cols
+        return self
+
+    def DO_NOTHING(self):
+        """
+        Set conflict action to DO NOTHING.
+        """
+        self._callstack.append('DO_NOTHING')
+        self._state.on_conflict_action = 'DO NOTHING'
+        return self
+
+    def DO_UPDATE(self, *args, **kwargs):
+        """
+        Set conflict action to DO UPDATE SET ...
+        Usage: 
+            .DO_UPDATE("col = EXCLUDED.col")
+            .DO_UPDATE(col='value')
+        """
+        self._callstack.append('DO_UPDATE')
+        self._state.on_conflict_action = 'DO UPDATE'
+        
+        updates = []
+        for arg in args:
+            updates.append(str(arg))
+        
+        for col, val in kwargs.items():
+            if isinstance(val, str):
+                # Heuristic: if it looks like an identifier, don't quote, else quote
+                # This is weak. Ideally we want explicit expressions vs values.
+                # But for existing Supersql patterns, let's assume string is value if simple?
+                # Actually, standard SQL typically:
+                # DO UPDATE SET col = EXCLUDED.col
+                # DO UPDATE SET status = 'active'
+                if val.upper().startswith('EXCLUDED.'):
+                    v = val
+                else: 
+                     # Treated as value
+                     v = f"'{val}'"
+            else:
+                v = str(val)
+            
+            updates.append(f'"{col}" = {v}')
+            
+        self._state.on_conflict_updates = updates
+        return self
 
     def JOIN(self, table, join_type='INNER'):
         """

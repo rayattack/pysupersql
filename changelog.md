@@ -1,3 +1,13 @@
+## 2026.2.8
+
+- Fixed `INSERT_INTO` to correctly use unqualified column names for `Field` objects 
+
+## 2026.2.7
+
+- Added `ON_CONFLICT` support to `Query` class with `DO_NOTHING` and `DO_UPDATE` actions
+- Added `INSERT` alias for `INSERT_INTO`
+
+
 ## 2026.2.6
 
 - Added `SELECT_DISTINCT` method to `Query` class
